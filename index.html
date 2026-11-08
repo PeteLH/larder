@@ -90,6 +90,7 @@
     <div id="tab-dates" hidden>
       <div class="progress" id="order-progress"><div class="track"><div class="fill" id="order-fill"></div></div><span id="order-count"></span></div>
       <p class="hint" id="order-hint">Our guess is on the green button. Tap it if the pack agrees.</p>
+      <button class="btn" id="unpackBtn" hidden><svg viewBox="0 0 24 24"><path d="M4 8V5h3M20 8V5h-3M4 16v3h3M20 16v3h-3M8 12h8"/></svg>Unpack mode: scan dates one by one</button>
       <div id="checklist"></div>
       <div class="links">
         <button class="linkbtn" id="checkNow">Check for new orders now</button>
@@ -225,9 +226,21 @@
     <span>Fit the date in the box</span>
     <button class="iconbtn light" id="dc-torch" aria-label="Torch" hidden><svg viewBox="0 0 24 24"><path d="M8 2h8l-1 6H9zM9 8l1 14h4l1-14"/></svg></button>
   </div>
+  <div class="dc-item" id="dc-item" hidden>
+    <div class="tile" id="dc-tile"></div>
+    <div class="t"><b id="dc-name"></b><span id="dc-prog"></span></div>
+  </div>
   <div class="dc-bottom">
     <p id="dc-status">Hold steady…</p>
     <button class="btn light" id="dc-snap">Read it now</button>
+    <div class="dc-acts" id="dc-acts" hidden>
+      <button class="btn light" id="dc-use" hidden></button>
+      <div class="dc-row">
+        <button class="dc-pill" id="dc-guess"></button>
+        <button class="dc-pill" id="dc-skip">Skip</button>
+        <button class="dc-pill" id="dc-finish">Finish</button>
+      </div>
+    </div>
   </div>
 </dialog>
 

@@ -246,3 +246,13 @@ dialog[open]{animation:up .2s ease-out}
 a.btn{text-decoration:none}
 .step a.btn{display:inline-flex;width:auto;padding:0 20px;height:48px;font-size:15px;margin:0}
 #installCard .btn{margin-top:8px}
+
+/* unpack mode */
+.dc-item{position:absolute;left:16px;right:16px;top:calc(env(safe-area-inset-top) + 72px);display:flex;align-items:center;gap:12px;background:rgba(0,0,0,.55);border-radius:18px;padding:12px 14px}
+.dc-item .t{flex:1;min-width:0}.dc-item b{display:block;font-size:17px;line-height:1.2}.dc-item span{font-size:13px;color:#d6d4cc}
+.dc-acts{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+.dc-acts .btn{margin:0}
+.dc-row{display:flex;gap:8px}
+.dc-pill{flex:1;height:48px;border-radius:14px;border:0;background:rgba(255,255,255,.16);color:#fff;font-weight:600;font-size:14px}
+#dc-guess{flex:2;background:rgba(74,222,128,.25)}
+#unpackBtn{margin:4px 0 14px}

@@ -79,7 +79,7 @@ function show(name, opts = {}) {
   render();
   window.scrollTo(0, 0);
 }
-window.addEventListener('popstate', () => { if ($('#sheet').open) { closeSheet(); return; } if ($('#datecam').open) { stopDateCam(null); return; } show('home', { noHistory: true }); });
+window.addEventListener('popstate', () => { if ($('#sheet').open) { closeSheet(); return; } if ($('#datecam').open) { unpack ? finishItem({ kind: 'stop' }) : stopDateCam(null); return; } show('home', { noHistory: true }); });
 $$('[data-back]').forEach(b => b.onclick = () => history.state ? history.back() : show('home', { noHistory: true }));
 $$('#nav [data-go]').forEach(b => b.onclick = () => b.dataset.go === 'home' ? (history.state ? history.back() : show('home', { noHistory: true })) : show(b.dataset.go));
 $('#avatar').onclick = () => show('settings');
@@ -477,13 +477,96 @@ function stopDateCam(result) {
   if (history.state && history.state.cam) history.back();
   if (dcDone) { const d = dcDone; dcDone = null; d(result); }
 }
-$('#dc-close').onclick = () => stopDateCam(null);
-$('#datecam').addEventListener('cancel', e => { e.preventDefault(); stopDateCam(null); });
+$('#dc-close').onclick = () => unpack ? finishItem({ kind: 'stop' }) : stopDateCam(null);
+$('#datecam').addEventListener('cancel', e => { e.preventDefault(); unpack ? finishItem({ kind: 'stop' }) : stopDateCam(null); });
 $('#dc-snap').onclick = async () => { $('#dc-status').textContent = 'Reading…'; const hit = await tryRead(true); if (hit) stopDateCam(hit); else $('#dc-status').textContent = 'No date found in the box. Try again.'; };
 $('#dc-torch').onclick = async () => {
   const t = dcStream && dcStream.getVideoTracks()[0]; if (!t) return;
   const on = !t.getSettings().torch; try { await t.applyConstraints({ advanced: [{ torch: on }] }); } catch {}
 };
+/* ---------- unpack mode: walk through the order's guessed dates with the camera open ---------- */
+let unpack = null;
+async function startCamStream() {
+  dcStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+  const v = $('#dc-video'); v.srcObject = dcStream; await v.play();
+  const track = dcStream.getVideoTracks()[0], caps = track.getCapabilities ? track.getCapabilities() : {};
+  $('#dc-torch').hidden = !caps.torch;
+  try { if (caps.focusMode && caps.focusMode.includes('continuous')) await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch {}
+}
+function setUnpackUI(on) {
+  $('#dc-item').hidden = !on; $('#dc-acts').hidden = !on; $('#dc-snap').hidden = on;
+  $('.dc-top span').textContent = on ? 'Unpack mode' : 'Fit the date in the box';
+}
+async function runUnpack() {
+  const list = pendingChecks().map(i => i.id);
+  if (!list.length) { toast('Nothing to check'); return; }
+  if (!navigator.mediaDevices?.getUserMedia) { toast('This phone\'s browser can\'t use the camera here'); return; }
+  unpack = { list, i: 0, done: 0, resolve: null };
+  setUnpackUI(true); $('#datecam').showModal(); history.pushState({ cam: 1 }, '');
+  $('#dc-status').textContent = 'Starting camera…';
+  try { await startCamStream(); } catch { toast('Camera not available'); return endUnpack(); }
+  $('#dc-status').textContent = 'Getting the reader ready…';
+  try { await getOcr(); } catch { toast('Date reader failed to load'); return endUnpack(); }
+  while (unpack && unpack.i < unpack.list.length) {
+    const it = byId(unpack.list[unpack.i]);
+    if (!it || it.deleted || !it.estimated) { unpack.i++; continue; }
+    const choice = await unpackItem(it);
+    if (!unpack || choice.kind === 'stop') break;
+    if (choice.kind === 'guess' || choice.kind === 'use') {
+      if (choice.kind === 'use') { it.date = choice.hit.date; if (choice.hit.dateType) it.dateType = choice.hit.dateType; }
+      it.estimated = false; learnFrom(data, it); upsert(it, true); unpack.done++;
+      if (navigator.vibrate) navigator.vibrate(40);
+    }
+    unpack.i++;
+  }
+  const n = unpack ? unpack.done : 0, left = pendingChecks().length;
+  endUnpack();
+  toast(left ? `${n} dates done · ${left} left for later` : `All dates checked (${n} this time)`);
+}
+function unpackItem(it) {
+  return new Promise(resolve => {
+    unpack.resolve = resolve; dcSeen = {};
+    const total = unpack.list.length;
+    $('#dc-tile').outerHTML = tileHtml(it.name).replace('class="tile', 'id="dc-tile" class="tile');
+    $('#dc-name').textContent = shortName(it.name) + (it.qty > 1 ? ` ×${it.qty}` : '');
+    $('#dc-prog').textContent = `${unpack.i + 1} of ${total} · ${PLACE[it.location]} · ${it.dateType === 'useby' ? 'use by' : 'best before'}`;
+    $('#dc-guess').textContent = `✓ ${weekday(it.date)} ${Number(it.date.slice(8))} ${daysUntil(it.date) > 6 ? new Date(it.date + 'T12:00').toLocaleDateString('en-GB', { month: 'short' }) : ''}`.trim();
+    $('#dc-guess').title = 'Our guess is right';
+    $('#dc-use').hidden = true;
+    $('#dc-status').textContent = 'Point at the date';
+    const token = {}; unpack.token = token;
+    (async () => {   // keep reading until a date is found or a button is pressed
+      dcLoop = true;
+      while (dcLoop && unpack && unpack.token === token) {
+        const hit = await tryRead();
+        if (!unpack || unpack.token !== token) return;
+        if (hit) {
+          $('#dc-status').textContent = `Read “${hit.raw}”`;
+          $('#dc-use').textContent = `Use ${new Date(hit.date + 'T12:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}`;
+          $('#dc-use').hidden = false; $('#dc-use').onclick = () => finishItem({ kind: 'use', hit });
+          if (navigator.vibrate) navigator.vibrate(30);
+          return;
+        }
+        await sleep(200);
+      }
+    })();
+  });
+}
+function finishItem(choice) { if (!unpack || !unpack.resolve) return; unpack.token = null; dcLoop = false; const r = unpack.resolve; unpack.resolve = null; r(choice); }
+$('#dc-guess').onclick = () => finishItem({ kind: 'guess' });
+$('#dc-skip').onclick = () => finishItem({ kind: 'skip' });
+$('#dc-finish').onclick = () => finishItem({ kind: 'stop' });
+function endUnpack() {
+  if (unpack && unpack.resolve) finishItem({ kind: 'stop' });
+  unpack = null; dcLoop = false;
+  if (dcStream) { dcStream.getTracks().forEach(t => t.stop()); dcStream = null; }
+  if ($('#datecam').open) $('#datecam').close();
+  setUnpackUI(false);
+  if (history.state && history.state.cam) history.back();
+  saveLocal(); scheduleSync(); render();
+}
+$('#unpackBtn').onclick = runUnpack;
+
 $('#scanDate').onclick = async () => {
   const hit = await openDateCam();
   if (!hit || !cur) return;
@@ -612,6 +695,7 @@ function renderDates() {
     $('#order-title').innerHTML = 'No orders yet';
     $('#order-progress').hidden = true;
   }
+  $('#unpackBtn').hidden = pend.length < 2;
   $('#order-hint').textContent = pend.length ? 'Our guess is on the green button. Tap it if the pack agrees.'
     : b ? 'Nothing left to check. New orders appear here by themselves when the app opens.' : 'When a Sainsbury\'s receipt reaches the larder inbox, the items appear here by themselves.';
   $('#checklist').innerHTML = pend.map(it => `<div class="ck" data-id="${it.id}">${tileHtml(it.name)}
