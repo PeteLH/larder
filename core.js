@@ -176,6 +176,29 @@ function emlToText(raw) {
   const text = html ? htmlToText(html.text) : plain ? plain.text : (/<html|<table|<td/i.test(raw) ? htmlToText(raw) : raw);
   return { subject, text };
 }
+// Attachments in a saved email (the Sainsbury's e-receipt arrives as a PDF attachment). Returns base64 bodies.
+function emlAttachments(raw) {
+  raw = raw.replace(/\r\n/g, '\n');
+  const out = [];
+  (function walk(chunk, depth) {
+    if (depth > 8) return;
+    const cut = chunk.indexOf('\n\n');
+    const head = (cut < 0 ? chunk : chunk.slice(0, cut)).replace(/\n[ \t]+/g, ' ');
+    const body = cut < 0 ? '' : chunk.slice(cut + 2);
+    const ct = ((head.match(/^content-type:\s*([^;\n]+)/im) || [])[1] || 'text/plain').trim().toLowerCase();
+    if (ct.startsWith('multipart/')) {
+      const b = head.match(/boundary="?([^";\n]+)"?/i); if (!b) return;
+      for (const p of body.split('--' + b[1]).slice(1)) if (!p.startsWith('--')) walk(p.replace(/^[ \t]*\n/, ''), depth + 1);
+      return;
+    }
+    if (ct === 'message/rfc822') return walk(body, depth + 1);
+    const name = (head.match(/(?:file)?name\*?="?([^";\n]+)"?/i) || [])[1] || '';
+    const enc = ((head.match(/^content-transfer-encoding:\s*(\S+)/im) || [])[1] || '').toLowerCase();
+    if ((ct === 'application/pdf' || /\.pdf$/i.test(name) || ct === 'application/octet-stream' && /\.pdf$/i.test(name)) && enc === 'base64')
+      out.push({ type: 'pdf', name, base64: body.replace(/[^A-Za-z0-9+/=]/g, '') });
+  })(raw, 0);
+  return out;
+}
 // Anything a person might hand us (pasted text, HTML, a raw .eml) → plain lines.
 function anyToText(s) {
   if (/^(received|return-path|delivered-to|mime-version|from|message-id|x-[\w-]+):/im.test(s.slice(0, 3000)) && /\n\n/.test(s.replace(/\r\n/g, '\n'))) return emlToText(s).text;
@@ -316,5 +339,5 @@ function readPackDate(raw) {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { ymd, todayStr, addDays, daysUntil, prettyDate, nowIso, uid, emptyData, guess, merge, makeItem, unitPrice, openedDays, learnKey, learnFrom, linePrice,
-    htmlToText, emlToText, anyToText, parseReceipt, findDate, readPackDate };
+    htmlToText, emlToText, emlAttachments, anyToText, parseReceipt, findDate, readPackDate };
 }
