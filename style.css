@@ -242,3 +242,7 @@ dialog[open]{animation:up .2s ease-out}
 .dc.old b{color:var(--amber)}
 .acts .act{font-size:13px}.acts .act .c{width:58px;height:58px;border-radius:29px}
 .toast .linkbtn{padding:0 0 0 10px;color:#86efac;display:inline}
+
+a.btn{text-decoration:none}
+.step a.btn{display:inline-flex;width:auto;padding:0 20px;height:48px;font-size:15px;margin:0}
+#installCard .btn{margin-top:8px}

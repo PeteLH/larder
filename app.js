@@ -826,7 +826,9 @@ function renderAbout() {
   const rl = $('#ab-reload'); if (rl) rl.onclick = async () => { const reg = await navigator.serviceWorker?.getRegistration(); if (reg) await reg.update(); location.reload(); };
 }
 function renderSettings() {
-  renderAbout(); if (!latestCommit) checkLatest();
+  renderAbout();
+  const inst = $('#installCard'); inst.hidden = standalone();
+  if (!standalone()) { const h = installHelp(); $('#installHelp').innerHTML = `<p class="hint" style="margin:0 0 4px">${h.p}</p>${h.b}`; $('#w-install') && ($('#w-install').onclick = doInstall); } if (!latestCommit) checkLatest();
   const on = remindersOn(), d = myDevice() || {};
   $('#remState').innerHTML = on
     ? `<label class="tick"><input type="checkbox" data-pref="morning" ${d.morning !== false ? 'checked' : ''}> 8am: what to use today and tomorrow</label>
@@ -883,9 +885,36 @@ function readSetupLink() {
 
 /* ---------- welcome ---------- */
 let installEvt = null;
-window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; if (screen === 'welcome') renderWelcome(); });
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; if (screen === 'welcome' || screen === 'settings') render(); });
 window.addEventListener('appinstalled', () => { localStorage.setItem('larder.installed', '1'); if (screen === 'welcome') renderWelcome(); });
 const standalone = () => matchMedia('(display-mode: standalone)').matches;
+// Which browser are we in? Installing only works in a full browser, not inside WhatsApp/Messages/Facebook.
+function browserKind() {
+  const ua = navigator.userAgent;
+  if (/WhatsApp|FBAN|FBAV|FB_IAB|Instagram|Line\/|Snapchat|; wv\)/i.test(ua)) return 'inapp';
+  if (/SamsungBrowser/i.test(ua)) return 'samsung';
+  if (/Firefox|FxiOS/i.test(ua)) return 'firefox';
+  if (/iPhone|iPad/i.test(ua)) return 'ios';
+  if (/Chrome/i.test(ua)) return 'chrome';
+  return 'other';
+}
+// A link that opens this app in Chrome on Android, carrying the setup so it connects there too
+// (each browser keeps its own storage, so Chrome wouldn't otherwise know the key).
+function chromeLink() {
+  const { owner, repo, branch, path, token } = cfg;
+  const hash = configured() ? '#setup=' + encodeURIComponent(btoa(JSON.stringify({ owner, repo, branch, path, token }))) : '';
+  return `intent://${location.host}${location.pathname}${hash}#Intent;scheme=https;package=com.android.chrome;end`;
+}
+function installHelp() {
+  if (installEvt) return { p: 'So it opens like any other app.', b: '<button class="btn" id="w-install">Install Larder</button>' };
+  switch (browserKind()) {
+    case 'inapp': return { p: 'This opened inside another app, which can\'t install it. Open it in Chrome instead, then install from there.', b: `<a class="btn" href="${chromeLink()}">Open in Chrome</a>` };
+    case 'samsung': return { p: 'In Samsung Internet, tap the <b>≡</b> menu at the bottom, then <b>Add page to</b> → <b>Home screen</b>.', b: '' };
+    case 'firefox': return { p: 'In Firefox, tap <b>⋮</b>, then <b>Install</b> (or <b>Add to Home screen</b>).', b: '' };
+    case 'ios': return { p: 'In Safari, tap <b>Share</b>, then <b>Add to Home Screen</b>.', b: '' };
+    default: return { p: 'In Chrome, tap <b>⋮</b> at the top right, then <b>Add to Home screen</b> (or <b>Install app</b>).', b: '' };
+  }
+}
 const isInstalled = () => standalone() || localStorage.getItem('larder.installed') === '1';
 function needsWelcome() { return !configured() || (localStorage.getItem('larder.welcomeDone') !== '1' && !(isInstalled() && remindersOn())); }
 function renderWelcome() {
@@ -893,16 +922,17 @@ function renderWelcome() {
   $('#w-sub').textContent = configured() ? 'Your phone is connected to the family larder. Just two taps left.' : 'What\'s in the fridge, freezer and cupboard, and what needs eating first.';
   const steps = [
     { done: configured(), t: 'Connect', p: 'Open the setup link you were sent.', b: '<button class="btn ghost" id="w-setup">I\'m the first one: enter the key</button>' },
-    { done: isInstalled(), t: 'Put it on your home screen', p: installEvt ? 'So it opens like any other app.' : 'In Chrome, tap ⋮ then Install app (or Add to Home screen).', b: installEvt ? '<button class="btn" id="w-install">Install Larder</button>' : '' },
+    { done: isInstalled(), t: 'Put it on your home screen', ...installHelp() },
     { done: remindersOn(), t: 'Turn on reminders', p: 'A nudge at 8am when food needs using up, and when the shopping\'s been added.', b: '<button class="btn" id="w-rem">Turn on reminders</button>' },
   ];
   $('#w-steps').innerHTML = steps.map((s, i) => `<div class="step ${s.done ? 'done' : ''}"><div class="n">${s.done ? '✓' : i + 1}</div><div><b>${s.t}</b>${s.done ? '' : `<p>${s.p}</p>${s.b}`}</div></div>`).join('');
   $('#w-setup') && ($('#w-setup').onclick = () => { show('settings'); $('#storage').open = true; setTimeout(() => $('#s-token').focus(), 150); });
-  $('#w-install') && ($('#w-install').onclick = async () => { installEvt.prompt(); const r = await installEvt.userChoice; if (r.outcome === 'accepted') { localStorage.setItem('larder.installed', '1'); installEvt = null; renderWelcome(); } });
+  $('#w-install') && ($('#w-install').onclick = doInstall);
   $('#w-rem') && ($('#w-rem').onclick = async () => { if (!configured()) { toast('Connect first'); return; } await enableReminders(); renderWelcome(); });
   $('#w-skip').textContent = steps.every(s => s.done) ? 'Start using Larder' : 'Skip for now';
   if (steps.every(s => s.done)) { localStorage.setItem('larder.welcomeDone', '1'); }
 }
+async function doInstall() { if (!installEvt) return; installEvt.prompt(); const r = await installEvt.userChoice; if (r.outcome === 'accepted') { localStorage.setItem('larder.installed', '1'); installEvt = null; render(); } }
 $('#w-skip').onclick = () => { localStorage.setItem('larder.welcomeDone', '1'); show('home', { noHistory: true }); };
 
 /* ---------- toast ---------- */
