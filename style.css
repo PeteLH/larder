@@ -218,3 +218,27 @@ dialog[open]{animation:up .2s ease-out}
 
 #about .stat a{color:var(--greenink);font-weight:600;text-decoration:none}
 #about .stat:last-child{border-bottom:0}
+
+/* v1.5 */
+.seg.wide{display:flex;width:100%;margin:16px 0 14px}
+.seg.wide button{flex:1;padding:10px 8px}
+.seg .count{display:inline-block;min-width:20px;padding:1px 6px;border-radius:10px;background:var(--soft);font-size:12px;font-weight:700;margin-left:4px}
+.seg button.on .count{background:var(--greenbg);color:var(--greenink)}
+.seg .count:empty{display:none}
+.addrow{display:flex;gap:8px;margin-bottom:12px}
+.addrow .field{flex:1;height:50px;background:var(--card);border:0;border-radius:14px}
+.btn.small{width:50px;height:50px;margin:0;flex:none;padding:0}
+.li{display:flex;align-items:center;gap:12px;background:var(--card);border-radius:16px;padding:12px 14px;margin-bottom:8px}
+.li .box{width:26px;height:26px;border-radius:13px;border:2px solid var(--line);background:transparent;flex:none;display:flex;align-items:center;justify-content:center;padding:0}
+.li .box svg{width:16px;height:16px;stroke:#fff;stroke-width:3;opacity:0}
+.li.done .box{background:var(--green2);border-color:var(--green2)}.li.done .box svg{opacity:1}
+.li .t{flex:1;min-width:0}.li .nm{font-size:15px;font-weight:600}.li .sb{font-size:12px;color:var(--muted)}
+.li.done .nm{text-decoration:line-through;color:var(--muted)}
+.li .x{border:0;background:transparent;color:var(--faint);width:36px;height:36px;display:flex;align-items:center;justify-content:center}
+.li .x svg{width:18px;height:18px}
+.pills{display:flex;gap:8px;padding:4px 22px 0;flex-wrap:wrap}
+.pills .pill{background:var(--card);color:var(--ink);text-decoration:none}
+.c.opn{background:#f6e9cf;color:#7a5a12}
+.dc.old b{color:var(--amber)}
+.acts .act{font-size:13px}.acts .act .c{width:58px;height:58px;border-radius:29px}
+.toast .linkbtn{padding:0 0 0 10px;color:#86efac;display:inline}

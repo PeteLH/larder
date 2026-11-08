@@ -20,7 +20,7 @@ const nowIso = () => new Date().toISOString();
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-function emptyData() { return { version: 2, items: [], products: {}, log: [], devices: {}, imported: [], meta: {} }; }
+function emptyData() { return { version: 3, items: [], products: {}, log: [], devices: {}, imported: [], meta: {}, shopping: [], learned: {} }; }
 
 /* ---------- shelf-life guesses (used when no date is known) ---------- */
 // [regex, location, dateType, days]  — first match wins. days null = no date.
@@ -71,21 +71,55 @@ function merge(a, b) {
   const devs = newest([...Object.values(a.devices), ...Object.values(b.devices)]);
   const meta = { ...a.meta };
   for (const [k, v] of Object.entries(b.meta)) if (!(k in meta) || String(v) > String(meta[k])) meta[k] = v;
+  const learned = { ...a.learned };
+  for (const [k, v] of Object.entries(b.learned)) if (!learned[k] || (v.updatedAt || '') > (learned[k].updatedAt || '')) learned[k] = v;
   return {
-    version: 2,
+    version: 3,
     items: [...newest([...a.items, ...b.items]).values()].filter(i => !(i.deleted && i.updatedAt < cutoff)).sort((x, y) => x.id < y.id ? -1 : 1),
     products: Object.fromEntries(Object.keys(products).sort().map(k => [k, products[k]])),
     log: [...new Map([...a.log, ...b.log].map(l => [l.id, l])).values()].sort((x, y) => y.at < x.at ? -1 : 1).slice(0, 500),
     devices: Object.fromEntries([...devs.values()].filter(d => !(d.gone && d.updatedAt < cutoff)).sort((x, y) => x.id < y.id ? -1 : 1).map(d => [d.id, d])),
     imported: [...new Set([...a.imported, ...b.imported])].sort().slice(-300),
     meta: Object.fromEntries(Object.keys(meta).sort().map(k => [k, meta[k]])),
+    shopping: [...newest([...a.shopping, ...b.shopping]).values()].filter(i => !(i.deleted && i.updatedAt < cutoff)).sort((x, y) => (x.addedAt || '') < (y.addedAt || '') ? -1 : 1),
+    learned: Object.fromEntries(Object.keys(learned).sort().map(k => [k, learned[k]])),
   };
 }
 function makeItem(p, by) {
   const now = nowIso();
   return { id: uid(), name: p.name, qty: p.qty || 1, location: p.location || 'fridge', dateType: p.dateType || 'useby',
     date: p.dateType === 'none' ? null : (p.date || null), estimated: !!p.estimated, barcode: p.barcode || null,
-    source: p.source || 'manual', addedAt: now, addedBy: by || '', updatedAt: now };
+    source: p.source || 'manual', addedAt: now, addedBy: by || '', updatedAt: now,
+    ...(p.price != null ? { price: Math.round(p.price * 100) / 100, boughtQty: p.boughtQty || p.qty || 1 } : {}) };
+}
+// Price of one unit of an item, if known (receipt prices are per line, so divide by quantity bought).
+function unitPrice(it) { return it && it.price != null ? it.price / (it.boughtQty || it.qty || 1) : null; }
+
+/* ---------- once opened ---------- */
+const OPEN_RULES = [
+  [/\bham\b|cooked|chicken|turkey|salami|chorizo|pastrami|prosciutto|beef slices/i, 2],
+  [/milk(?!.*(chocolate|choc))|cream|crème|creme|custard|yogh?urt|fromage|kefir/i, 3],
+  [/hummus|houmous|dip\b|coleslaw|guacamole|salsa|pesto(?!.*jar)|soup|stock\b|gravy/i, 3],
+  [/wine|prosecco/i, 3],
+  [/juice|smoothie/i, 5],
+  [/mozzarella|ricotta|feta|halloumi|cottage cheese|soft cheese|brie|camembert|mascarpone/i, 4],
+  [/cheddar|parmesan|parmigiano|gouda|edam|red leicester|cheese/i, 21],
+  [/mayo|ketchup|sauce|jar|pickle|chutney|jam|mustard|curry paste|passata/i, 42],
+];
+function openedDays(name) { for (const [re, d] of OPEN_RULES) if (re.test(name)) return d; return 3; }
+
+/* ---------- dates learned from confirmations ---------- */
+// When someone confirms or corrects the date of an item that came from a receipt, remember how many
+// days it lasted from delivery, so the next order of the same thing gets a better guess.
+const learnKey = name => String(name || '').toLowerCase().replace(/^sainsbury'?s\s+/, '').replace(/[^a-z0-9]+/g, ' ').trim();
+function learnFrom(data, it) {
+  if (!it || !it.date || it.estimated || !(it.source || '').startsWith('sainsburys') || !it.addedAt) return false;
+  const days = daysUntil(it.date) - daysUntil(it.addedAt.slice(0, 10));
+  if (days < 0 || days > 1500) return false;
+  const k = learnKey(it.name), prev = data.learned[k];
+  if (prev && prev.days === days && prev.dateType === it.dateType) return false;
+  data.learned[k] = { days, dateType: it.dateType, n: (prev ? prev.n || 1 : 0) + 1, updatedAt: nowIso() };
+  return true;
 }
 
 /* ---------- turning emails / web pages into plain lines ---------- */
@@ -178,19 +212,22 @@ const PRICE_RE = /-?£\s?\d+(?:\.\d{1,2})?|\b\d+\.\d{2}\b/g;
 const JUNK_RE = /(^(sent|to|cc|bcc|from|date|subject|fw|fwd|re):|\bsubject:|\bsent:\s|_{8,}|forwarded message|original message|sub-?total|^total|total (to pay|paid|savings|cost|price|items)|delivery|charge|nectar|points|voucher|coupon|saving|you saved|discount|order (number|no|ref)|payment|card ending|visa|mastercard|amex|paid|refund|dear |thank|address|slot|driver|your van|unsubscribe|privacy|terms|cookie|help centre|contact us|www\.|https?:|@|carrier bag|bag charge|instructions|description|unit price|vat|receipt|reference|account|copyright|registered|view (in|your)|download|app store|google play|follow us|customer|reserved|telephone|phone|postcode|^qty|^quantity|^price|^items?\b|^product)/i;
 const UNAVAILABLE_RE = /^(unavailable|missing|not (available|delivered)|out of stock|items? (we couldn.t|not))/i;
 
-function parseReceipt(text) {
+function parseReceipt(text, learned = {}) {
   const lines = text.split(/\r?\n/).map(l => l.replace(/[ \t]+/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
   const out = []; let skipSection = false, shortLife = false;
   for (const raw of lines) {
     const plainPrice = raw.replace(PRICE_RE, '').replace(/[\s:x×-]/gi, '') === '';
-    if (plainPrice) { if (out.length && /£|\d\.\d{2}/.test(raw)) out[out.length - 1].hasPrice = true; continue; }
+    if (plainPrice) {
+      if (out.length && /£|\d\.\d{2}/.test(raw)) { const last = out[out.length - 1]; last.hasPrice = true; if (last.price == null) last.price = linePrice(raw); }
+      continue;
+    }
     if (raw.length < 60 && UNAVAILABLE_RE.test(raw)) { skipSection = true; continue; }
     if (raw.length < 60 && /short[- ]?life|use[- ]?by|delivered items|your (items|shopping)|substitut/i.test(raw) && !findDate(raw)) {
       skipSection = false; shortLife = /short|use[- ]?by/i.test(raw); continue;
     }
     if (JUNK_RE.test(raw)) continue;
     let line = raw, qty = 1, hasQty = false;
-    const hasPrice = (raw.match(PRICE_RE) || []).length > 0;
+    const hasPrice = (raw.match(PRICE_RE) || []).length > 0, price = linePrice(raw);
     line = line.replace(PRICE_RE, ' ');
     const dt = findDate(line);
     if (dt) line = line.replace(dt.match, ' ').replace(/\b(use[- ]?by|best before|bb|exp(iry|ires)?|date)\b:?/gi, ' ');
@@ -198,7 +235,7 @@ function parseReceipt(text) {
     if (m) { qty = +m[1]; hasQty = true; line = line.replace(m[0], ' '); }
     const name = line.replace(/\s+/g, ' ').replace(/^[\s\-–•*:,.|]+|[\s\-–•*:,.|]+$/g, '').trim();
     if (!/[a-z]{3}/i.test(name) || name.length > 110 || skipSection) continue;
-    out.push({ name, qty, hasQty, hasPrice, date: dt?.date || null, fromShortLife: shortLife });
+    out.push({ name, qty, hasQty, hasPrice, price, date: dt?.date || null, fromShortLife: shortLife });
   }
   // Lines with a price/quantity are the order lines. Dated lines without one (the short-life
   // list) usually repeat an order line, so copy the date onto that line instead of adding twice.
@@ -212,11 +249,20 @@ function parseReceipt(text) {
     else merged.push(d);
   }
   return merged.map(it => {
-    const g = guess(it.name);
-    const dateType = g.dateType === 'none' ? 'none' : (it.date && it.fromShortLife ? 'useby' : g.dateType);
+    const g = guess(it.name), L = learned[learnKey(it.name)];
+    let dateType = g.dateType === 'none' ? 'none' : (it.date && it.fromShortLife ? 'useby' : g.dateType);
+    let days = g.days;
+    if (L && !it.date) { days = L.days; if (dateType !== 'none') dateType = L.dateType || dateType; }
     return { include: !g.household, name: it.name, qty: it.qty, location: g.location, dateType,
-      date: it.date || (g.days != null ? addDays(g.days) : null), estimated: !it.date && g.days != null };
+      date: it.date || (days != null ? addDays(days) : null), estimated: !it.date && days != null, learned: !!(L && !it.date),
+      ...(it.price != null ? { price: it.price, boughtQty: it.qty } : {}) };
   });
+}
+// The money on a receipt line: the last positive £ amount (savings lines are negative and skipped earlier).
+function linePrice(line) {
+  const ms = [...String(line).matchAll(/(-?)£\s?(\d+(?:\.\d{1,2})?)|(?<![\d.])(\d+\.\d{2})(?![\d.]*\s?(?:kg|g|l|ml|cl)\b)/gi)];
+  for (let i = ms.length - 1; i >= 0; i--) { const m = ms[i]; if (m[1] === '-') continue; const v = parseFloat(m[2] || m[3]); if (v > 0 && v < 500) return v; }
+  return null;
 }
 
 
@@ -269,6 +315,6 @@ function readPackDate(raw) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { ymd, todayStr, addDays, daysUntil, prettyDate, nowIso, uid, emptyData, guess, merge, makeItem,
+  module.exports = { ymd, todayStr, addDays, daysUntil, prettyDate, nowIso, uid, emptyData, guess, merge, makeItem, unitPrice, openedDays, learnKey, learnFrom, linePrice,
     htmlToText, emlToText, anyToText, parseReceipt, findDate, readPackDate };
 }

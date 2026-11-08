@@ -36,6 +36,10 @@
     <button class="avatar" id="avatar" aria-label="Settings">P</button>
   </div>
   <div class="soon" id="soon"></div>
+  <div class="pills">
+    <a class="pill" id="ideas" target="_blank" rel="noopener" hidden><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.8.8 1 1.5 1 2.5h6c0-1 .2-1.7 1-2.5A6 6 0 0 0 12 3z"/></svg>Ideas for these</a>
+    <button class="pill" id="leftovers"><svg viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></svg>Leftovers</button>
+  </div>
   <div class="pad">
     <h2 class="hd h2">In the house</h2>
     <div id="places"></div>
@@ -57,32 +61,51 @@
   </div>
 </section>
 
-<!-- ORDERS -->
+<!-- SHOP: shopping list + dates to check after an order -->
 <section class="screen" id="s-orders">
   <div class="top">
     <div class="top-text">
-      <div class="kicker" id="order-kicker">Sainsbury's</div>
-      <h1 class="hd big2" id="order-title">Check the dates<br>as you unpack</h1>
+      <div class="kicker" id="order-kicker">Shared between your phones</div>
+      <h1 class="hd big2" id="order-title">Shopping list</h1>
     </div>
   </div>
   <div class="pad">
-    <div class="progress" id="order-progress"><div class="track"><div class="fill" id="order-fill"></div></div><span id="order-count"></span></div>
-    <p class="hint" id="order-hint">Our guess is on the green button. Tap it if the pack agrees.</p>
-    <div id="checklist"></div>
-    <div class="links">
-      <button class="linkbtn" id="checkNow">Check for new orders now</button>
-      <button class="linkbtn" id="fileBtn">Add an order from an email or PDF</button>
-      <input type="file" id="fileInput" accept=".eml,.pdf,.html,.htm,.txt,.mht,message/rfc822,application/pdf,text/*" hidden>
-      <details id="pasteWrap"><summary class="linkbtn">Paste an order's text</summary>
-        <textarea id="pasteBox" placeholder="Paste the order or e-receipt here"></textarea>
-        <button class="btn" id="parseBtn">Read items</button>
-      </details>
+    <div class="seg wide" role="tablist" aria-label="Shop">
+      <button type="button" role="tab" data-shoptab="list">List <span class="count" id="list-count"></span></button>
+      <button type="button" role="tab" data-shoptab="dates">Dates to check <span class="count" id="dates-count"></span></button>
     </div>
-    <div id="review" hidden>
-      <h2 class="hd h2" id="review-title">Check the items</h2>
-      <p class="hint">Untick anything that isn't food. You can fix dates afterwards.</p>
-      <div id="review-list"></div>
-      <button class="btn" id="importBtn">Add items</button>
+
+    <div id="tab-list">
+      <form class="addrow" id="addForm">
+        <input class="field" id="addInput" placeholder="Add something…" autocomplete="off" enterkeyhint="done" aria-label="Add to the shopping list">
+        <button class="btn small" type="submit" aria-label="Add"><svg viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></svg></button>
+      </form>
+      <div id="shoplist"></div>
+      <div class="links">
+        <button class="linkbtn" id="shareList">Share or copy the list</button>
+        <button class="linkbtn muted" id="clearTicked" hidden>Clear ticked items</button>
+      </div>
+    </div>
+
+    <div id="tab-dates" hidden>
+      <div class="progress" id="order-progress"><div class="track"><div class="fill" id="order-fill"></div></div><span id="order-count"></span></div>
+      <p class="hint" id="order-hint">Our guess is on the green button. Tap it if the pack agrees.</p>
+      <div id="checklist"></div>
+      <div class="links">
+        <button class="linkbtn" id="checkNow">Check for new orders now</button>
+        <button class="linkbtn" id="fileBtn">Add an order from an email or PDF</button>
+        <input type="file" id="fileInput" accept=".eml,.pdf,.html,.htm,.txt,.mht,message/rfc822,application/pdf,text/*" hidden>
+        <details id="pasteWrap"><summary class="linkbtn">Paste an order's text</summary>
+          <textarea id="pasteBox" placeholder="Paste the order or e-receipt here"></textarea>
+          <button class="btn" id="parseBtn">Read items</button>
+        </details>
+      </div>
+      <div id="review" hidden>
+        <h2 class="hd h2" id="review-title">Check the items</h2>
+        <p class="hint">Untick anything that isn't food. You can fix dates afterwards.</p>
+        <div id="review-list"></div>
+        <button class="btn" id="importBtn">Add items</button>
+      </div>
     </div>
   </div>
 </section>
@@ -160,6 +183,7 @@
         <div><label class="lbl" for="e-qty">Quantity</label><input class="field" id="e-qty" type="number" min="1" inputmode="numeric"></div>
         <div><label class="lbl" for="e-loc">Where</label><select class="field" id="e-loc"><option value="fridge">Fridge</option><option value="freezer">Freezer</option><option value="cupboard">Cupboard</option></select></div>
       </div>
+      <label class="lbl" for="e-price">Price paid (optional, for the waste total)</label><input class="field" id="e-price" type="number" step="0.01" min="0" inputmode="decimal" placeholder="£">
     </div>
     <div class="datebox">
       <div class="seg" role="group" aria-label="Date type">
@@ -179,12 +203,13 @@
     </div>
     <div class="acts" id="sh-acts">
       <button type="button" class="act" id="a-used"><span class="c used"><svg viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg></span>Used it</button>
+      <button type="button" class="act" id="a-open"><span class="c opn"><svg viewBox="0 0 24 24"><path d="M4 10h16v10H4zM4 10l2-5h12l2 5M9 14h6"/></svg></span>Opened</button>
       <button type="button" class="act" id="a-freeze"><span class="c frz"><svg viewBox="0 0 24 24"><path d="M12 2v20M3 7l18 10M21 7 3 17"/></svg></span>Freeze</button>
       <button type="button" class="act" id="a-bin"><span class="c bin"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></span>Binned</button>
     </div>
     <button type="submit" class="btn" id="sh-save">Save</button>
     <div class="sheetfoot">
-      <button type="button" class="linkbtn muted" id="sh-editbtn">Edit name or quantity</button>
+      <button type="button" class="linkbtn muted" id="sh-editbtn">Edit name, quantity or price</button>
       <button type="button" class="linkbtn muted" id="sh-remove">Remove</button>
     </div>
   </form>

@@ -8,6 +8,11 @@ It's a home-screen web app hosted on GitHub Pages. The stock list lives in the p
 - **Reminders** at 8am (use today / tomorrow) and 5pm (must be eaten tonight), plus one when an order is added.
 - **Scan** barcodes for anything already in the house, then **Scan the date** to read the use-by straight off the pack.
   The date reader runs on the phone (Tesseract OCR), cross-checks itself, and always shows what it read so you can confirm.
+- **Opened** button: sets the shorter once-opened date (ham 2 days, milk 3, cheddar 3 weeks, jars 6 weeks).
+- **Shopping list** shared between phones; using the last of something offers "Add to list".
+- **Money**: receipt prices are kept, so Settings shows £ binned, and Sunday 5pm brings a week summary.
+- **Ideas for these** opens a BBC Good Food search for what's about to go off. **Leftovers** adds one in two taps.
+- Freezer flags anything frozen over 3 months. Guessed dates learn from your corrections.
 - Works offline. Both phones stay in sync.
 
 ## Adding a phone

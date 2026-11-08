@@ -52,7 +52,7 @@ function whenText(it) {
 function relText(n) { return n === 0 ? 'today' : n === 1 ? 'tomorrow' : n === -1 ? 'yesterday' : n < 0 ? `${-n} days ago` : `in ${n} days`; }
 function dayCount(it) {   // the big number on the right of a row
   if (!it.date) {
-    if (it.frozenOn) { const w = Math.max(0, Math.floor(-daysUntil(it.frozenOn) / 7)); return `<div class="dc"><b>${w}</b><span>wk frozen</span></div>`; }
+    if (it.frozenOn) { const w = Math.max(0, Math.floor(-daysUntil(it.frozenOn) / 7)); return `<div class="dc${w >= 13 ? ' old' : ''}"><b>${w}</b><span>wk frozen</span></div>`; }
     return `<div class="dc"><b>–</b><span>no date</span></div>`;
   }
   const n = daysUntil(it.date);
@@ -68,6 +68,7 @@ const byDate = (a, b) => (a.date || '9999') < (b.date || '9999') ? -1 : (a.date 
 let screen = 'home', placeKey = 'fridge';
 function show(name, opts = {}) {
   if (screen === 'scan' && name !== 'scan') stopScan();
+  if (name !== 'orders') shopTab = null;
   screen = name;
   $$('.screen').forEach(s => s.classList.toggle('on', s.id === 's-' + name));
   $$('#nav [data-go]').forEach(b => b.classList.toggle('on', b.dataset.go === name));
@@ -111,6 +112,9 @@ function renderHome() {
       <div class="num"><b${numCls}>${big}</b>${unit}</div><div class="sub">${sub}</div></button>`;
   }).join('') : `<div class="scard calm"><div class="nm">${all.length ? 'Nothing needs eating this week.' : 'Nothing here yet.'}</div><div class="sub">${all.length ? 'Enjoy it while it lasts.' : 'Scan things as you put them away, or wait for the next Sainsbury\'s order.'}</div></div>`;
   $('#home-title').textContent = soon.length ? 'Eat soon' : all.length ? 'All good' : 'Hello';
+  const ing = [...new Set(soon.filter(i => !/leftover/i.test(i.name)).map(i => ingredient(i.name)).filter(w => w && !STAPLES.test(w)))].slice(0, 3);
+  $('#ideas').hidden = !ing.length;
+  if (ing.length) { $('#ideas').href = 'https://www.bbcgoodfood.com/search?q=' + encodeURIComponent(ing.join(' ')); $('#ideas').title = 'Recipes with ' + ing.join(', '); }
 
   const icons = {
     fridge: ['#dce8f7', '#1e4e8c', '<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M6 10h12M9 5v2M9 13v3"/>'],
@@ -120,7 +124,10 @@ function renderHome() {
   $('#places').innerHTML = ['fridge', 'freezer', 'cupboard'].map(k => {
     const its = all.filter(i => i.location === k).sort(byDate);
     let sum = its.length ? `${its.length} item${its.length > 1 ? 's' : ''}` : 'Empty';
-    if (k === 'freezer') { const old = its.filter(i => i.frozenOn).sort((a, b) => a.frozenOn < b.frozenOn ? -1 : 1)[0]; if (old) sum += ` · oldest frozen ${dayMon(old.frozenOn)}`; }
+    if (k === 'freezer') {
+      const fz = its.filter(i => i.frozenOn).sort((a, b) => a.frozenOn < b.frozenOn ? -1 : 1), stale = fz.filter(i => -daysUntil(i.frozenOn) >= 90).length;
+      if (stale) sum += ` · ${stale} in over 3 months`; else if (fz[0]) sum += ` · oldest frozen ${dayMon(fz[0].frozenOn)}`;
+    }
     else if (its.length) {
       const due = its.filter(i => i.date && daysUntil(i.date) <= 7).length;
       const next = its.find(i => i.date);
@@ -137,7 +144,17 @@ function renderHome() {
 }
 $('#soon').addEventListener('click', e => { const b = e.target.closest('[data-open]'); if (b) openSheet(byId(b.dataset.open)); });
 $('#places').addEventListener('click', e => { const b = e.target.closest('[data-place]'); if (b) { placeKey = b.dataset.place; $('#search').value = ''; $('#search').hidden = placeKey !== 'all'; show('place'); if (placeKey === 'all') $('#search').focus(); } });
-$('#nudge').onclick = () => show('orders');
+$('#nudge').onclick = () => { shopTab = 'dates'; show('orders'); };
+// The main ingredient word in a product name, for recipe searches ("Chicken Breast Fillets 640g" → "chicken").
+const STAPLES = /^(milk|bread|loaf|eggs?|butter|juice|water|tea|coffee|sugar|flour)$/i;
+function ingredient(name) {
+  const s = shortName(name);
+  if (/cr[eè]me fra[iî]che/i.test(s)) return 'creme fraiche';
+  for (const [re] of CATS) { const m = s.match(re); if (m) return m[0].toLowerCase().replace(/^beans?$/, 'beans'); }
+  return s.split(/\s+/).slice(-1)[0].toLowerCase();
+}
+$('#leftovers').onclick = () => openSheet({ name: '', qty: 1, location: 'fridge', dateType: 'useby', date: addDays(3), source: 'leftovers' },
+  { isNew: true, meta: 'Leftovers · use within 3 days, or freeze them' });
 
 /* place list */
 function renderPlace() {
@@ -187,22 +204,43 @@ function upsert(item, quiet) {
   if (i >= 0) data.items[i] = item; else data.items.push(item);
   saveLocal(); if (!quiet) render(); scheduleSync();
 }
-function logEvent(item, action) {
-  const e = { id: uid(), name: item.name, action, at: nowIso(), by: cfg.name || '', daysLeft: daysUntil(item.date) };
+function logEvent(item, action, qty = 1) {
+  const up = unitPrice(item);
+  const e = { id: uid(), name: item.name, action, qty, at: nowIso(), by: cfg.name || '', daysLeft: daysUntil(item.date),
+    ...(up != null ? { value: Math.round(up * qty * 100) / 100 } : {}) };
   data.log.unshift(e); return e.id;
 }
-function undoable(text, before, logId) {
-  toast(text, () => {
-    upsert({ ...before });
-    if (logId) data.log = data.log.filter(l => l.id !== logId);
-    saveLocal(); render(); toast('Undone');
-  });
+function undoFn(before, logId) {
+  return () => { upsert({ ...before }); if (logId) data.log = data.log.filter(l => l.id !== logId); saveLocal(); render(); toast('Undone'); };
 }
+function undoable(text, before, logId) { toast(text, undoFn(before, logId)); }
 function useOne(id) {
   const it = byId(id); if (!it) return;
   const before = { ...it }, logId = logEvent(it, 'used');
   if (it.qty > 1) { it.qty--; upsert(it); undoable(`${shortName(it.name)}: ${it.qty} left`, before, logId); }
-  else { it.deleted = true; upsert(it); undoable(`Used up: ${shortName(it.name)}`, before, logId); }
+  else {
+    it.deleted = true; upsert(it);
+    const onList = data.shopping.some(s => !s.deleted && !s.done && learnKey(s.name) === learnKey(shortName(it.name)));
+    toast(`Used up: ${shortName(it.name)}`, [['Undo', undoFn(before, logId)], ...(onList ? [] : [['Add to list', () => addToList(shortName(it.name), 'ran out')]])]);
+  }
+}
+function markOpened(id) {
+  let it = byId(id); const before = { ...it }, n = openedDays(it.name), limit = addDays(n);
+  if (it.qty > 1) {   // open one of several: split it off so the unopened ones keep their date
+    it.qty--; upsert(it, true);
+    const one = makeItem({ ...it, qty: 1 }, it.addedBy); Object.assign(one, { source: it.source, addedAt: it.addedAt, price: it.price, boughtQty: it.boughtQty });
+    if (one.price == null) { delete one.price; delete one.boughtQty; }
+    it = one;
+  }
+  it.openedOn = todayStr();
+  if (it.dateType === 'none' || !it.date || it.date > limit) { it.date = limit; it.dateType = 'useby'; }
+  it.estimated = false;
+  upsert(it);
+  const isSplit = it.id !== before.id;
+  toast(`Opened: use within ${n === 1 ? '1 day' : n < 14 ? n + ' days' : Math.round(n / 7) + ' weeks'}`, () => {
+    if (isSplit) { it.deleted = true; upsert(it, true); }
+    upsert({ ...before }); toast('Undone');
+  });
 }
 function freeze(id) {
   const it = byId(id), before = { ...it };
@@ -210,7 +248,7 @@ function freeze(id) {
   upsert(it); undoable(`Frozen: ${shortName(it.name)}`, before);
 }
 function bin(id) {
-  const it = byId(id), before = { ...it }, logId = logEvent(it, 'binned');
+  const it = byId(id), before = { ...it }, logId = logEvent(it, 'binned', it.qty || 1);
   it.deleted = true; upsert(it); undoable(`Binned: ${shortName(it.name)}`, before, logId);
 }
 function removeItem(id) { const it = byId(id), before = { ...it }; it.deleted = true; upsert(it); undoable('Removed', before); }
@@ -231,6 +269,8 @@ function openSheet(item, { isNew = false, after = null, meta = '' } = {}) {
   $('#sh-editbtn').hidden = isNew;
   $('#sh-save').textContent = isNew ? 'Add to the larder' : 'Done';
   $('#e-name').value = cur.name || ''; $('#e-qty').value = cur.qty || 1; $('#e-loc').value = cur.location || 'fridge';
+  $('#e-price').value = cur.price != null ? cur.price : '';
+  $('#a-open').hidden = isNew || !!cur.openedOn || cur.location === 'freezer';
   $('#readnote').hidden = true;
   $('#sh-meta').dataset.extra = meta;
   paintSheet();
@@ -241,8 +281,8 @@ function paintSheet() {
   const name = $('#e-name').value.trim() || cur.name || 'New item';
   $('#sh-tile').outerHTML = tileHtml(name, true).replace('class="tile', 'id="sh-tile" class="tile');
   $('#sh-name').textContent = curIsNew ? (name === 'New item' ? 'New item' : shortName(name)) : shortName(cur.name);
-  const src = cur.source && cur.source.startsWith('sainsburys') ? `from ${batchLabel(cur.addedAt)}` : cur.addedBy ? `added by ${cur.addedBy}` : '';
-  $('#sh-meta').textContent = $('#sh-meta').dataset.extra || [cur.qty > 1 ? `×${cur.qty}` : '', PLACE[cur.location], src].filter(Boolean).join(' · ');
+  const src = cur.source && cur.source.startsWith('sainsburys') ? `from ${batchLabel(cur.addedAt).replace(/^./, c => c.toLowerCase())}` : cur.addedBy ? `added by ${cur.addedBy}` : '';
+  $('#sh-meta').textContent = $('#sh-meta').dataset.extra || [cur.qty > 1 ? `×${cur.qty}` : '', PLACE[cur.location], cur.openedOn ? `opened ${-daysUntil(cur.openedOn) === 0 ? 'today' : weekday(cur.openedOn)}` : '', src].filter(Boolean).join(' · ');
   $$('.seg button').forEach(b => b.classList.toggle('on', b.dataset.type === (cur.dateType || 'none')));
   const none = cur.dateType === 'none';
   $('#stepper').hidden = $('#quick').hidden = none;
@@ -272,6 +312,8 @@ function collectSheet() {
     cur.name = $('#e-name').value.trim() || cur.name;
     cur.qty = Math.max(1, parseInt($('#e-qty').value) || 1);
     cur.location = $('#e-loc').value;
+    const pr = parseFloat($('#e-price').value);
+    if (!isNaN(pr) && pr >= 0) { if (pr !== cur.price) { cur.price = pr; cur.boughtQty = cur.qty; } } else { delete cur.price; delete cur.boughtQty; }
   }
   if (cur.dateType === 'none') cur.date = null;
 }
@@ -282,7 +324,7 @@ function saveSheet() {
     const it = makeItem(cur, cfg.name); it.estimated = !!cur.estimated && !!cur.date;
     upsert(it);
     toast(`Added: ${shortName(it.name)}`);
-  } else if (JSON.stringify(cur) !== curOrig) upsert(cur);
+  } else if (JSON.stringify(cur) !== curOrig) { upsert(cur); if (learnFrom(data, cur)) saveLocal(); }
   if (cur.barcode) {
     data.products[cur.barcode] = { name: cur.name, location: cur.location, dateType: cur.dateType, days: cur.date ? daysUntil(cur.date) : null };
     saveLocal(); scheduleSync();
@@ -300,6 +342,7 @@ $('#sheet').addEventListener('cancel', e => { e.preventDefault(); if (!curIsNew)
 $('#sheet').addEventListener('click', e => { if (e.target === $('#sheet')) { if (!curIsNew) saveSheet(); closeSheet(); } });
 $('#a-used').onclick = () => { const id = cur.id; closeSheet(); useOne(id); };
 $('#a-freeze').onclick = () => { const id = cur.id; closeSheet(); freeze(id); };
+$('#a-open').onclick = () => { const id = cur.id; saveSheet(); closeSheet(); markOpened(id); };
 $('#a-bin').onclick = () => { const id = cur.id; closeSheet(); bin(id); };
 $('#sh-remove').onclick = () => { const id = cur.id; closeSheet(); removeItem(id); };
 
@@ -514,7 +557,48 @@ function batchLabel(at) {
   const n = -daysUntil(day);
   return n === 0 ? 'Today\'s shop' : n === 1 ? 'Yesterday\'s shop' : n < 7 ? `${new Date(day + 'T12:00').toLocaleDateString('en-GB', { weekday: 'long' })}'s shop` : `the ${dayMon(day)} shop`;
 }
+let shopTab = null;
+function addToList(name, why) {
+  name = String(name || '').trim(); if (!name) return;
+  const now = nowIso();
+  data.shopping.push({ id: uid(), name, why: why || '', addedBy: cfg.name || '', addedAt: now, updatedAt: now });
+  saveLocal(); scheduleSync(); render(); toast(`Added to the list: ${name}`);
+}
+$('#addForm').addEventListener('submit', e => { e.preventDefault(); const v = $('#addInput').value; $('#addInput').value = ''; addToList(v); $('#addInput').focus(); });
+$$('[data-shoptab]').forEach(b => b.onclick = () => { shopTab = b.dataset.shoptab; render(); });
+function renderList() {
+  const items = data.shopping.filter(s => !s.deleted), todo = items.filter(s => !s.done), done = items.filter(s => s.done);
+  const row = s => `<div class="li${s.done ? ' done' : ''}" data-sid="${s.id}">
+      <button class="box" data-tick="${s.id}" aria-label="${s.done ? 'Untick' : 'Tick'} ${esc(s.name)}"><svg viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg></button>
+      <div class="t"><div class="nm">${esc(s.name)}</div><div class="sb">${esc([s.why, s.addedBy ? 'added by ' + s.addedBy : ''].filter(Boolean).join(' · '))}</div></div>
+      <button class="x" data-del="${s.id}" aria-label="Remove ${esc(s.name)}"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>`;
+  $('#shoplist').innerHTML = todo.length || done.length
+    ? todo.map(row).join('') + (done.length ? `<div class="gh">Got it</div>` + done.map(row).join('') : '')
+    : `<div class="empty">Nothing on the list.<br>When you use the last of something, you can add it here in one tap.</div>`;
+  $('#clearTicked').hidden = !done.length;
+  $('#shareList').hidden = !todo.length;
+}
+$('#shoplist').addEventListener('click', e => {
+  const t = e.target.closest('[data-tick]'), d = e.target.closest('[data-del]');
+  const s = data.shopping.find(x => x.id === (t || d || {}).dataset?.[t ? 'tick' : 'del']); if (!s) return;
+  if (t) s.done = !s.done; else s.deleted = true;
+  s.updatedAt = nowIso(); saveLocal(); scheduleSync(); render();
+});
+$('#clearTicked').onclick = () => { const now = nowIso(); data.shopping.forEach(s => { if (s.done && !s.deleted) { s.deleted = true; s.updatedAt = now; } }); saveLocal(); scheduleSync(); render(); };
+$('#shareList').onclick = async () => {
+  const text = 'Shopping list\n' + data.shopping.filter(s => !s.deleted && !s.done).map(s => '• ' + s.name).join('\n');
+  try { if (navigator.share) await navigator.share({ title: 'Shopping list', text }); else { await navigator.clipboard.writeText(text); toast('List copied'); } } catch {}
+};
 function renderOrders() {
+  const pendN = pendingChecks().length, listN = data.shopping.filter(s => !s.deleted && !s.done).length;
+  if (!shopTab) shopTab = pendN ? 'dates' : 'list';
+  $$('[data-shoptab]').forEach(b => b.classList.toggle('on', b.dataset.shoptab === shopTab));
+  $('#list-count').textContent = listN || ''; $('#dates-count').textContent = pendN || '';
+  $('#tab-list').hidden = shopTab !== 'list'; $('#tab-dates').hidden = shopTab !== 'dates';
+  if (shopTab === 'list') { $('#order-kicker').textContent = 'Shared between your phones'; $('#order-title').innerHTML = 'Shopping list'; renderList(); return; }
+  renderDates();
+}
+function renderDates() {
   const b = latestBatch(), pend = pendingChecks();
   if (b) {
     const total = b.items.length, done = b.items.filter(i => !i.estimated || i.deleted || !i.date).length;
@@ -537,16 +621,16 @@ function renderOrders() {
 }
 $('#checklist').addEventListener('click', e => {
   const y = e.target.closest('[data-yes]'), p = e.target.closest('[data-pen]');
-  if (y) { const it = byId(y.dataset.yes); it.estimated = false; upsert(it); if (navigator.vibrate) navigator.vibrate(20); }
+  if (y) { const it = byId(y.dataset.yes); it.estimated = false; learnFrom(data, it); upsert(it); if (navigator.vibrate) navigator.vibrate(20); }
   if (p) openSheet(byId(p.dataset.pen));
 });
 
 /* manual import: email file, PDF, pasted text, shared from another app */
 let review = [];
 function readOrder(text) {
-  review = parseReceipt(anyToText(text));
+  review = parseReceipt(anyToText(text), data.learned);
   if (!review.length) { toast('No items found in that. Try the e-receipt email'); return; }
-  if (screen !== 'orders') show('orders');
+  shopTab = 'dates'; if (screen !== 'orders') show('orders'); else render();
   renderReview(); $('#review').hidden = false;
   setTimeout(() => $('#review').scrollIntoView({ behavior: 'smooth' }), 60);
 }
@@ -696,7 +780,7 @@ async function enableReminders() {
   let sub = await reg.pushManager.getSubscription();
   if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64urlToBytes(window.LARDER_VAPID) });
   const prev = myDevice() || {};
-  data.devices[deviceId()] = { id: deviceId(), name: cfg.name || 'Phone', sub: sub.toJSON(), morning: prev.morning ?? true, evening: prev.evening ?? true, imports: prev.imports ?? true, updatedAt: nowIso() };
+  data.devices[deviceId()] = { id: deviceId(), name: cfg.name || 'Phone', sub: sub.toJSON(), morning: prev.morning ?? true, evening: prev.evening ?? true, imports: prev.imports ?? true, weekly: prev.weekly ?? true, updatedAt: nowIso() };
   saveLocal(); scheduleSync(); render();
   reg.showNotification('Reminders are on', { body: 'You\'ll get a nudge at 8am when food needs using up.', icon: 'icon-192.png', badge: 'icon-192.png' });
 }
@@ -747,7 +831,8 @@ function renderSettings() {
   $('#remState').innerHTML = on
     ? `<label class="tick"><input type="checkbox" data-pref="morning" ${d.morning !== false ? 'checked' : ''}> 8am: what to use today and tomorrow</label>
        <label class="tick"><input type="checkbox" data-pref="evening" ${d.evening !== false ? 'checked' : ''}> 5pm: anything that must be eaten tonight</label>
-       <label class="tick"><input type="checkbox" data-pref="imports" ${d.imports !== false ? 'checked' : ''}> When a Sainsbury's order is added</label>`
+       <label class="tick"><input type="checkbox" data-pref="imports" ${d.imports !== false ? 'checked' : ''}> When a Sainsbury's order is added</label>
+       <label class="tick"><input type="checkbox" data-pref="weekly" ${d.weekly !== false ? 'checked' : ''}> Sunday 5pm: the week's waste, and old freezer food</label>`
     : `<p class="hint" style="margin:0">Get a nudge when food is about to go off.</p><button class="btn" id="remBtn">Turn on reminders</button>`;
   if (!on) $('#remBtn').onclick = enableReminders;
   const phones = Object.values(data.devices).filter(p => !p.gone).sort((x, y) => (y.lastSeen || y.updatedAt || '') < (x.lastSeen || x.updatedAt || '') ? -1 : 1);
@@ -759,10 +844,14 @@ function renderSettings() {
       ${p.id === deviceId() ? '' : `<button class="linkbtn muted" data-unlink="${p.id}">Remove</button>`}</div>`).join('')
     : '<p class="hint" style="margin:0">Only this phone so far.</p>';
   const since = new Date(Date.now() - 30 * 86400000).toISOString(), recent = data.log.filter(l => l.at > since);
-  const used = recent.filter(l => l.action === 'used').length, binned = recent.filter(l => l.action === 'binned');
-  const pct = used + binned.length ? Math.round(binned.length / (used + binned.length) * 100) : 0;
-  $('#stats').innerHTML = `<div class="stat"><span>Used</span><b>${used}</b></div><div class="stat"><span>Binned</span><b>${binned.length} (${pct}%)</b></div>
-    ${binned.slice(0, 6).map(l => `<div class="stat"><span>${esc(shortName(l.name))}</span><span>${dayMon(l.at.slice(0, 10))}</span></div>`).join('')}`;
+  const used = recent.filter(l => l.action === 'used'), binned = recent.filter(l => l.action === 'binned');
+  const n = l => l.qty || 1, money = ls => ls.reduce((t, l) => t + (l.value || 0), 0), gbp = v => '£' + v.toFixed(2);
+  const nu = used.reduce((t, l) => t + n(l), 0), nb = binned.reduce((t, l) => t + n(l), 0);
+  const pct = nu + nb ? Math.round(nb / (nu + nb) * 100) : 0, unpriced = binned.filter(l => l.value == null).length;
+  $('#stats').innerHTML = `<div class="stat"><span>Used up</span><b>${nu}</b></div>
+    <div class="stat"><span>Binned</span><b>${nb} (${pct}%) · ${gbp(money(binned))}</b></div>
+    ${binned.slice(0, 6).map(l => `<div class="stat"><span>${esc(shortName(l.name))}</span><span>${l.value != null ? gbp(l.value) + ' · ' : ''}${dayMon(l.at.slice(0, 10))}</span></div>`).join('')}
+    ${unpriced ? `<p class="hint" style="margin:8px 0 0">${unpriced} binned item${unpriced > 1 ? 's' : ''} had no price. Receipt items have prices automatically.</p>` : ''}`;
 }
 $('#phones').addEventListener('click', e => {
   const b = e.target.closest('[data-unlink]'); if (!b) return;
@@ -818,12 +907,15 @@ $('#w-skip').onclick = () => { localStorage.setItem('larder.welcomeDone', '1'); 
 
 /* ---------- toast ---------- */
 let toastT;
-function toast(text, undo) {
+// toast(text) or toast(text, undoFn) or toast(text, [[label, fn], ...])
+function toast(text, actions) {
   const el = $('#toast');
-  el.innerHTML = esc(text) + (undo ? ' <button class="linkbtn" style="color:#86efac;padding:0 0 0 8px">Undo</button>' : '');
-  el.style.pointerEvents = undo ? 'auto' : 'none';
-  if (undo) el.querySelector('button').onclick = () => { el.classList.remove('on'); undo(); };
-  el.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('on'), undo ? 5000 : 2400);
+  if (typeof actions === 'function') actions = [['Undo', actions]];
+  actions = actions || [];
+  el.innerHTML = esc(text) + actions.map((a, i) => ` <button class="linkbtn" data-t="${i}">${esc(a[0])}</button>`).join('');
+  el.style.pointerEvents = actions.length ? 'auto' : 'none';
+  actions.forEach((a, i) => el.querySelector(`[data-t="${i}"]`).onclick = () => { el.classList.remove('on'); a[1](); });
+  el.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('on'), actions.length ? 6000 : 2400);
 }
 
 /* ---------- start ---------- */
