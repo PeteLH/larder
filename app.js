@@ -442,7 +442,7 @@ const isInstalled = () => matchMedia('(display-mode: standalone)').matches || lo
 function renderWelcome() {
   if (isInstalled() && matchMedia('(display-mode: standalone)').matches) localStorage.setItem('larder.installed', '1');
   const steps = [
-    { done: configured(), title: 'Connect', body: 'Open the setup link you were sent. That\'s it.' },
+    { done: configured(), title: 'Connect', body: 'Open the setup link you were sent. That\'s it.<br><button class="btn small ghost" id="wSetup">I\'m setting it up: enter the key</button>' },
     { done: isInstalled(), title: 'Put it on your home screen', body: installEvt ? '<button class="btn small" id="wInstall">📲 Install Larder</button>' : 'In Chrome tap <b>⋮</b> then <b>Install app</b> (or <b>Add to Home screen</b>).' },
     { done: remindersOn(), title: 'Turn on reminders', body: '<button class="btn small" id="wRem">🔔 Turn on</button>' },
   ];
@@ -454,6 +454,7 @@ function renderWelcome() {
     <button class="btn ghost small" id="wHide" style="margin-top:8px">Hide this</button>`;
   $('#wInstall') && ($('#wInstall').onclick = async () => { installEvt.prompt(); const r = await installEvt.userChoice; if (r.outcome === 'accepted') { localStorage.setItem('larder.installed', '1'); installEvt = null; renderWelcome(); } });
   $('#wRem') && ($('#wRem').onclick = enableReminders);
+  $('#wSetup') && ($('#wSetup').onclick = () => { showTab('settings'); const d = $('#tab-settings details'); d.open = true; setTimeout(() => { d.scrollIntoView({ behavior: 'smooth' }); $('#s-token').focus(); }, 100); });
   $('#wHide').onclick = () => { localStorage.setItem('larder.welcomeHidden', '1'); renderWelcome(); };
 }
 
