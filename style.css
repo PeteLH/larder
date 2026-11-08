@@ -215,3 +215,6 @@ dialog[open]{animation:up .2s ease-out}
 .phone .t{flex:1;min-width:0}.phone .t b{display:block;font-size:15px;font-weight:600}.phone .t span{font-size:12px;color:var(--muted)}
 .avatar.sm{width:36px;height:36px;border-radius:18px;font-size:14px;display:flex;align-items:center;justify-content:center}
 .you{font-size:11px;font-weight:600;color:var(--greenink);background:var(--greenbg);border-radius:6px;padding:2px 6px;margin-left:4px}
+
+#about .stat a{color:var(--greenink);font-weight:600;text-decoration:none}
+#about .stat:last-child{border-bottom:0}

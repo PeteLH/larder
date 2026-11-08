@@ -714,7 +714,35 @@ function fillSettings() {
   $('#s-name').value = cfg.name || ''; $('#s-owner').value = cfg.owner || ''; $('#s-repo').value = cfg.repo || ''; $('#s-token').value = cfg.token || '';
   $('#storage').open = !configured();
 }
+let latestCommit = null;
+async function checkLatest() {
+  // The app repo is public, so this needs no key. Compares the newest commit with the version this phone is running.
+  try {
+    const r = await fetch('https://api.github.com/repos/PeteLH/larder/commits/main', { headers: { Accept: 'application/vnd.github+json' }, cache: 'no-store' });
+    if (!r.ok) throw 0;
+    const j = await r.json(); latestCommit = { sha: j.sha.slice(0, 7), date: j.commit.committer.date, url: j.html_url };
+    // The published version number, straight from the site (not this phone's cached copy).
+    const v = await (await fetch('version.js?t=' + Date.now(), { cache: 'no-store' })).text();
+    latestCommit.number = (v.match(/number:\s*'([^']+)'/) || [])[1];
+  } catch { latestCommit = { error: true }; }
+  if (screen === 'settings') renderAbout();
+}
+function renderAbout() {
+  const V = window.LARDER_VERSION || { number: '?', date: '' };
+  $('#ab-ver').textContent = `${V.number} · ${V.date ? dayMon(V.date) + ' ' + V.date.slice(0, 4) : ''}`;
+  const code = 'https://github.com/PeteLH/larder', dataRepo = `https://github.com/${cfg.owner || 'PeteLH'}/${cfg.repo || 'larder-data'}`;
+  $('#ab-code').href = code; $('#ab-code').textContent = 'PeteLH/larder';
+  $('#ab-data').href = dataRepo; $('#ab-data').textContent = dataRepo.replace('https://github.com/', '');
+  const L = latestCommit;
+  if (!L) { $('#ab-latest').textContent = 'checking…'; return; }
+  if (L.error) { $('#ab-latest').textContent = 'couldn\'t check'; return; }
+  const newer = L.number && L.number !== V.number;
+  $('#ab-latest').innerHTML = `${L.number ? 'v' + esc(L.number) + ' · ' : ''}<a href="${L.url}" target="_blank" rel="noopener">${L.sha}</a> · ${dayMon(L.date.slice(0, 10))}` +
+    (newer ? ' · <button class="linkbtn" id="ab-reload" style="padding:0 0 0 4px;display:inline">update now</button>' : '');
+  const rl = $('#ab-reload'); if (rl) rl.onclick = async () => { const reg = await navigator.serviceWorker?.getRegistration(); if (reg) await reg.update(); location.reload(); };
+}
 function renderSettings() {
+  renderAbout(); if (!latestCommit) checkLatest();
   const on = remindersOn(), d = myDevice() || {};
   $('#remState').innerHTML = on
     ? `<label class="tick"><input type="checkbox" data-pref="morning" ${d.morning !== false ? 'checked' : ''}> 8am: what to use today and tomorrow</label>

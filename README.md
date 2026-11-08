@@ -21,3 +21,7 @@ On Android you can also **Share** a PDF straight to Larder once it's installed.
 ## Files
 `index.html` + `app.js` are the app. `core.js` (receipt reading, shelf-life guesses, sync merge) is shared with the job in
 `larder-data`. `style.css` is the look (Direction B). `config.js` holds public settings only. `vendor/` holds the barcode, PDF and date readers; `fonts/` the two typefaces (SIL OFL).
+
+## Releasing a change
+Bump `number` (and `date`) in `version.js` and the `CACHE` name in `sw.js` together. Phones compare their running
+version with the published `version.js` and offer "update now" in **Settings → About** when they differ.
