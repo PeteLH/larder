@@ -359,6 +359,36 @@ function readSetupLink() {
   } catch { toast('That setup link didn\'t work'); }
 }
 
+/* ---------- asking the GitHub job to look for new orders ---------- */
+// Runs quietly when the app is opened (at most once an hour across both phones), or on demand.
+let checking = false;
+async function requestCheck(manual = false) {
+  if (!configured() || checking) return;
+  const last = Math.max(Date.parse(data.meta.lastMailCheck || 0) || 0, +localStorage.getItem('larder.lastCheckAsk') || 0);
+  if (!manual && Date.now() - last < 3600e3) return;
+  checking = true; localStorage.setItem('larder.lastCheckAsk', Date.now());
+  const before = liveItems().length;
+  if (manual) { $('#checkNow').textContent = 'Checking… (about a minute)'; }
+  try {
+    const r = await fetch(`https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}/actions/workflows/larder.yml/dispatches`,
+      { method: 'POST', headers: { ...headers(), 'Content-Type': 'application/json' }, body: JSON.stringify({ ref: cfg.branch || 'main', inputs: { mode: 'check' } }) });
+    if (!r.ok) throw Object.assign(new Error('dispatch ' + r.status), { status: r.status });
+    for (const wait of [40, 30, 30, 40]) {           // the job usually takes 30–60 seconds
+      await new Promise(ok => setTimeout(ok, wait * 1000));
+      await sync();
+      if (Date.parse(data.meta.lastMailCheck || 0) > last) break;
+    }
+    const added = liveItems().length - before;
+    if (manual) toast(added > 0 ? `Found a new order: ${added} items added` : 'No new orders');
+  } catch (e) {
+    console.error(e);
+    if (manual) toast(e.status === 403 || e.status === 404 ? 'The access key can\'t start checks yet (needs Actions permission)' : 'Couldn\'t check right now');
+  } finally {
+    checking = false;
+    if ($('#checkNow')) $('#checkNow').textContent = 'Check for new orders now';
+  }
+}
+
 /* ---------- reminders (web push; sent by the scheduled job in the data repo) ---------- */
 function deviceId() { let d = localStorage.getItem('larder.device'); if (!d) { d = uid(); localStorage.setItem('larder.device', d); } return d; }
 const myDevice = () => data.devices[deviceId()];
@@ -442,9 +472,11 @@ readSetupLink();
 window.addEventListener('hashchange', () => { readSetupLink(); renderWelcome(); sync(); });
 render();
 sync();
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { render(); sync(); } });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { render(); sync(); requestCheck(false); } });
 setInterval(() => { if (document.visibilityState === 'visible') sync(); }, 60000);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').then(refreshSubscription).catch(() => {});
 renderWelcome();
 readShared();
+$('#checkNow').onclick = e => { e.preventDefault(); requestCheck(true); };
+setTimeout(() => requestCheck(false), 3000);
 if (new URLSearchParams(location.search).get('tab')) showTab(new URLSearchParams(location.search).get('tab'));

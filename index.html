@@ -86,6 +86,7 @@
   .tick input{width:22px;height:22px;flex:none}
   details summary{cursor:pointer;padding:4px 0}
   details[open] summary{margin-bottom:6px}
+  a.link{color:var(--green2);font-weight:600;white-space:nowrap}
   .stat{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line);font-size:14px}
 </style>
 </head>
@@ -132,8 +133,9 @@
   <section class="tab" id="tab-import">
     <div class="card">
       <h2>Add a Sainsbury's order</h2>
-      <p class="hint">Orders emailed to the larder inbox are added automatically, and you'll get a notification. If one hasn't come through, pick one of these:</p>
-      <button class="btn" id="fileBtn">📎 Choose the email or PDF</button>
+      <p class="hint">New orders are picked up automatically when you open the app, and you'll get a notification. <a href="#" id="checkNow" class="link">Check for new orders now</a></p>
+      <p class="hint">If one still hasn't come through:</p>
+      <button class="btn ghost" id="fileBtn">📎 Choose the email or PDF</button>
       <input type="file" id="fileInput" accept=".eml,.pdf,.html,.htm,.txt,.mht,message/rfc822,application/pdf,text/*" hidden>
       <p class="hint">From the Outlook app, open the email, tap <b>⋯</b> → <b>Print</b> → <b>Save as PDF</b>, then choose that file here.</p>
       <details><summary class="hint">…or copy and paste the text</summary>
