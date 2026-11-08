@@ -25,6 +25,21 @@ function emptyData() { return { version: 3, items: [], products: {}, log: [], de
 /* ---------- shelf-life guesses (used when no date is known) ---------- */
 // [regex, location, dateType, days]  — first match wins. days null = no date.
 const RULES = [
+  [/calpol|paracetamol|ibuprofen|medicine|plasters?\b|vitamins?\b|nappy|nappies|wipes/i, 'cupboard', 'none', null, true],
+  [/stock pots?|stock cubes?|gravy granules|bouillon/i, 'cupboard', 'bestbefore', 365],
+  [/crisps|tortilla chips|doritos|walkers|pringles|popcorn|\bnachos\b/i, 'cupboard', 'bestbefore', 90],
+  [/chocolate spread|hazelnut spread|peanut butter|nutella|marmite|jam\b|honey\b(?!\s*roast)/i, 'cupboard', 'bestbefore', 270],
+  [/squash\b.*(no added sugar|\d\s?l\b|orange|lemon|summer fruits|blackcurrant)|robinsons|cordial/i, 'cupboard', 'bestbefore', 270],
+  [/cully|fresh soup|chilled soup|soup pot/i, 'fridge', 'useby', 5],
+  [/soup/i, 'cupboard', 'bestbefore', 365],
+  [/cooking sauce|pasta sauce|curry sauce|bbq sauce|barbecue (cooking )?sauce/i, 'cupboard', 'bestbefore', 365],
+  [/kid'?s meal|little dish|ready meal|lasagn|risotto|cottage pie|fish pie|mac(aroni)? (and|&) cheese/i, 'fridge', 'useby', 5],
+  [/diced|prepared|stir fry|chopped (veg|onion|butternut)|spiralised|butternut/i, 'fridge', 'useby', 4],
+  [/garlic (bread|flatbread|baguette)|flatbread/i, 'fridge', 'useby', 5],
+  [/bake at home|part.?baked/i, 'cupboard', 'bestbefore', 7],
+  [/lunchbox loaf|soreen|cereal bars?|\bbars x\d/i, 'cupboard', 'bestbefore', 30],
+  [/cereal|weetos|cornflakes|shreddies|cheerios|granola|muesli|\boats\b/i, 'cupboard', 'bestbefore', 180],
+  [/dunkers|dairylea|cheese strings|babybel/i, 'fridge', 'useby', 14],
   [/toilet|kitchen roll|tissue|washing|laundry|detergent|bleach|cleaner|spray|sponge|bin bag|foil|cling|baking paper|nappy|nappies|wipes|shampoo|conditioner|shower|soap|toothpaste|toothbrush|deodorant|razor|dishwasher|fabric|batter(y|ies)|light bulb|plaster|cotton|sanitary|tampon|pads\b|pet food|cat litter/i, 'cupboard', 'none', null, true],
   [/frozen|ice cream|ice lolly|lollies|oven chips|fish fingers|potato waffles|garden peas \d/i, 'freezer', 'bestbefore', 120],
   [/fresh fish|salmon|cod\b|haddock|prawn|mackerel|seabass|sea bass|tuna steak|scampi|smoked haddock/i, 'fridge', 'useby', 2],
@@ -235,7 +250,50 @@ const PRICE_RE = /-?£\s?\d+(?:\.\d{1,2})?|\b\d+\.\d{2}\b/g;
 const JUNK_RE = /(^(sent|to|cc|bcc|from|date|subject|fw|fwd|re):|\bsubject:|\bsent:\s|_{8,}|forwarded message|original message|sub-?total|^total|total (to pay|paid|savings|cost|price|items)|delivery|charge|nectar|points|voucher|coupon|saving|you saved|discount|order (number|no|ref)|payment|card ending|visa|mastercard|amex|paid|refund|dear |thank|address|slot|driver|your van|unsubscribe|privacy|terms|cookie|help centre|contact us|www\.|https?:|@|carrier bag|bag charge|instructions|description|unit price|vat|receipt|reference|account|copyright|registered|view (in|your)|download|app store|google play|follow us|customer|reserved|telephone|phone|postcode|^qty|^quantity|^price|^items?\b|^product)/i;
 const UNAVAILABLE_RE = /^(unavailable|missing|not (available|delivered)|out of stock|items? (we couldn.t|not))/i;
 
+// Sainsbury's PDF e-receipt: "Groceries (53 items)", then lines like "2  Little Dish Lasagnette 200g  £6.30"
+// (long names wrap onto the next line). "Shorter life" lists items that expire today or tomorrow.
+function fixLigatures(t) { return t.replace(/\s*\u00a0?\s{1,2}(ffi|ffl|ff|fi|fl)\s{1,2}/g, '$1'); }
+function parseSainsburysReceipt(text, learned = {}) {
+  const lines = fixLigatures(text).split(/\r?\n/).map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const slot = (text.match(/Slot time:?\s*\w+day\s+(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)\s+(\d{4})/i) || []);
+  const MON = { january: 0, february: 1, march: 2, april: 3, may: 4, june: 5, july: 6, august: 7, september: 8, october: 9, november: 10, december: 11 };
+  const delivered = slot[1] ? new Date(+slot[3], MON[slot[2].toLowerCase()] ?? new Date().getMonth(), +slot[1]) : new Date();
+  const items = [], shortLife = new Set();
+  let section = '', pending = null;
+  const finish = it => { if (section === 'groceries') items.push(it); else if (section === 'short') shortLife.add(learnKey(it.name)); };
+  for (const l of lines) {
+    if (/^groceries\s*\(\d+/i.test(l)) { section = 'groceries'; pending = null; continue; }
+    if (/^shorter life/i.test(l)) { section = 'short'; pending = null; continue; }
+    if (/^substitutions?\b/i.test(l)) { section = 'subs'; pending = null; continue; }
+    if (/^(order summary|our substitute promise|our short life|delivery cost|subtotal)/i.test(l)) { if (section === 'groceries') section = 'done'; else if (section !== 'done') section = ''; pending = null; continue; }
+    if (section !== 'groceries' && section !== 'short') continue;
+    const price = l.match(/£\s?(\d+\.\d{2})$/);
+    const start = l.match(/^(\d{1,2})\s+(.*)$/);
+    if (start) {
+      const body = start[2].replace(/\s*£\s?\d+\.\d{2}$/, '').trim();
+      const it = { qty: +start[1], name: body, price: price ? +price[1] : null };
+      if (price) finish(it); else pending = it;
+    } else if (pending) {
+      pending.name += ' ' + l.replace(/\s*£\s?\d+\.\d{2}$/, '').trim();
+      if (price) { pending.price = +price[1]; finish(pending); pending = null; }
+    }
+  }
+  const tidy = n => n.replace(/,?\s*(Taste the Difference|Inspired to Cook|Seasonal Edition)\b/gi, '').replace(/\s{2,}/g, ' ').trim();
+  return items.map(it => {
+    const name = tidy(it.name), g = guess(name), L = learned[learnKey(name)];
+    const short = shortLife.has(learnKey(it.name));
+    let dateType = g.dateType, days = g.days;
+    if (L) { days = L.days; if (dateType !== 'none') dateType = L.dateType || dateType; }
+    if (short) { dateType = 'useby'; days = 1; }
+    return { include: !g.household, name, qty: it.qty, location: g.location, dateType,
+      date: dateType === 'none' || days == null ? null : addDays(days, delivered), estimated: !short && days != null && dateType !== 'none',
+      learned: !!L && !short, shortLife: short, price: it.price, boughtQty: it.qty };
+  });
+}
+const isSainsburysReceipt = t => /Groceries\s*\(\d+\s*items?\)/i.test(t);
+
 function parseReceipt(text, learned = {}) {
+  if (isSainsburysReceipt(text)) return parseSainsburysReceipt(text, learned);
   const lines = text.split(/\r?\n/).map(l => l.replace(/[ \t]+/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
   const out = []; let skipSection = false, shortLife = false;
   for (const raw of lines) {
@@ -339,5 +397,5 @@ function readPackDate(raw) {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { ymd, todayStr, addDays, daysUntil, prettyDate, nowIso, uid, emptyData, guess, merge, makeItem, unitPrice, openedDays, learnKey, learnFrom, linePrice,
-    htmlToText, emlToText, emlAttachments, anyToText, parseReceipt, findDate, readPackDate };
+    htmlToText, emlToText, emlAttachments, anyToText, parseReceipt, parseSainsburysReceipt, isSainsburysReceipt, findDate, readPackDate };
 }

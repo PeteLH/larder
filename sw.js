@@ -1,5 +1,5 @@
 // Larder service worker: offline copy of the app, push reminders, and receiving files shared from other apps.
-const CACHE = 'larder-v1.5.2';
+const CACHE = 'larder-v1.6';
 const SHELL = ['./', 'index.html', 'app.js', 'core.js', 'config.js', 'version.js', 'style.css', 'fonts/fonts.css', 'fonts/inter.woff2', 'fonts/bricolage.woff2', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png', 'icon-180.png', 'vendor/html5-qrcode.min.js'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener('activate', e => {

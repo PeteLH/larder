@@ -642,7 +642,11 @@ async function readFile(f) {
   try {
     if (/pdf$/i.test(f.type) || /\.pdf$/i.test(f.name)) readOrder(await pdfToText(await f.arrayBuffer()));
     else if (/\.msg$/i.test(f.name)) toast('That\'s an Outlook .msg file. Save it as PDF instead');
-    else readOrder(await f.text());
+    else {
+      const raw = await f.text(), pdfs = /^(received|from|mime-version|message-id):/im.test(raw.slice(0, 4000)) ? emlAttachments(raw) : [];
+      if (pdfs.length) readOrder(await pdfToText(Uint8Array.from(atob(pdfs[0].base64), c => c.charCodeAt(0)).buffer));   // e-receipt attached as PDF
+      else readOrder(raw);
+    }
   } catch (err) { console.error(err); toast('Couldn\'t read that file'); }
 }
 async function pdfToText(buf) {
