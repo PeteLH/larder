@@ -220,7 +220,55 @@ function parseReceipt(text) {
 }
 
 
+/* ---------- reading a date off a pack (text from the on-phone OCR) ---------- */
+const MON_RE = 'JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|SEPT|OCT|NOV|DEC';
+function readPackDate(raw) {
+  // Undo the usual OCR mix-ups: letters inside numbers, digits inside month names.
+  let t = ' ' + String(raw || '').toUpperCase().replace(/[\n\r]+/g, ' ') + ' ';
+  t = t.replace(/[A-Z0-9|]+/g, tok => {
+    const digits = (tok.match(/[0-9]/g) || []).length;
+    if (digits >= tok.length / 2 && !new RegExp(`(${MON_RE})`).test(tok)) return tok.replace(/[OQD]/g, '0').replace(/[IL|]/g, '1').replace(/S/g, '5').replace(/Z/g, '2').replace(/B(?=\d)/g, '8');
+    return tok.replace(/0/g, 'O').replace(/1(?=[A-Z])/g, 'I');
+  });
+  t = t.replace(/\b(\d{1,2})(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEPT?|OCT|NOV|DEC)/g, '$1 $2').replace(/(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEPT?|OCT|NOV|DEC)(\d)/g, '$1 $2');
+  const dateType = /USE\s*-?\s*BY|U5E\s*BY|\bUB\b|USE\s*8Y/.test(t) ? 'useby'
+    : /BEST\s*BEFORE|BEST\s*BY|\bBBE?\b|\bB\/B\b|DISPLAY\s*UNTIL/.test(t) ? 'bestbefore' : null;
+  const months = { JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5, JUL: 6, AUG: 7, SEP: 8, SEPT: 8, OCT: 9, NOV: 10, DEC: 11 };
+  const yr = y => y == null ? null : (String(y).length === 2 ? 2000 + +y : +y);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const sane = d => d && !isNaN(d) && (d - today) / 86400000 > -60 && (d - today) / 86400000 < 4 * 365;
+  const found = [];
+  // A date right after "use by" / "best before" beats one after "display until" or a batch code.
+  const add = (d, score, raw, at) => {
+    if (!sane(d)) return;
+    const before = t.slice(Math.max(0, at - 22), at);
+    let type = null;
+    if (/USE\s*-?\s*BY|\bUB\b/.test(before)) { score += 3; type = 'useby'; }
+    else if (/BEST\s*BEFORE|BEST\s*BY|\bBBE?\b|END/.test(before)) { score += 3; type = 'bestbefore'; }
+    else if (/DISPLAY|SELL\s*BY|PACKED|PROD/.test(before)) score -= 3;
+    found.push({ date: ymd(d), score, raw: raw.trim(), type });
+  };
+  const withYearOrNearest = (y, m, d) => y ? new Date(y, m, d) : nearestYear(m, d);
+  let m;
+  const R1 = new RegExp(`\\b(\\d{1,2})[\\s./-]*(${MON_RE})[A-Z]*\\.?[\\s./-]*(\\d{4}|\\d{2})?(?!\\d)`, 'g');
+  while ((m = R1.exec(t))) if (+m[1] >= 1 && +m[1] <= 31) add(withYearOrNearest(yr(m[3]), months[m[2]], +m[1]), m[3] ? 5 : 4, m[0], m.index);
+  const R2 = /\b(\d{1,2})\s*[./-]\s*(\d{1,2})\s*[./-]\s*(\d{4}|\d{2})(?!\d)/g;
+  while ((m = R2.exec(t))) if (+m[1] >= 1 && +m[1] <= 31 && +m[2] >= 1 && +m[2] <= 12) add(new Date(yr(m[3]), +m[2] - 1, +m[1]), 5, m[0], m.index);
+  const R2b = /\b(\d{2})\s(\d{2})\s(\d{2})\b/g;   // "12 11 26"
+  while ((m = R2b.exec(t))) if (+m[1] >= 1 && +m[1] <= 31 && +m[2] >= 1 && +m[2] <= 12) add(new Date(yr(m[3]), +m[2] - 1, +m[1]), 3, m[0], m.index);
+  const R3 = /\b(\d{1,2})\s*\/\s*(\d{1,2})\b(?!\s*[./-]\s*\d)/g;
+  while ((m = R3.exec(t))) if (+m[1] >= 1 && +m[1] <= 31 && +m[2] >= 1 && +m[2] <= 12) add(nearestYear(+m[2] - 1, +m[1]), 2, m[0], m.index);
+  // Month + year only ("END MAR 2027", "03/2027"): the last day of that month.
+  const R4 = new RegExp(`(?:^|[^0-9])\\s(${MON_RE})[A-Z]*[\\s./-]*(\\d{4}|\\d{2})(?!\\d)`, 'g');
+  while ((m = R4.exec(t))) { const y = yr(m[2]); if (y >= 2020) add(new Date(y, months[m[1]] + 1, 0), 3, m[0], m.index); }
+  const R5 = /\b(\d{1,2})\s*[./\s-]\s*(\d{4})\b/g;
+  while ((m = R5.exec(t))) if (+m[1] >= 1 && +m[1] <= 12) add(new Date(+m[2], +m[1], 0), 3, m[0], m.index);
+  if (!found.length) return null;
+  found.sort((a, b) => b.score - a.score || (a.date < b.date ? -1 : 1));
+  return { date: found[0].date, score: found[0].score, dateType: found[0].type || dateType, raw: found[0].raw, others: [...new Set(found.slice(1).map(f => f.date))].filter(d => d !== found[0].date) };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { ymd, todayStr, addDays, daysUntil, prettyDate, nowIso, uid, emptyData, guess, merge, makeItem,
-    htmlToText, emlToText, anyToText, parseReceipt, findDate };
+    htmlToText, emlToText, anyToText, parseReceipt, findDate, readPackDate };
 }
