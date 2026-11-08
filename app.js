@@ -627,6 +627,14 @@ async function ghPut(d, sha) {
   const r = await fetch(apiUrl(), { method: 'PUT', headers: { ...headers(), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!r.ok) throw Object.assign(new Error(`GitHub ${r.status}`), { status: r.status });
 }
+// Every connected phone registers itself (name + last seen), at most once an hour to keep commits down.
+function touchDevice() {
+  const id = deviceId(), d = data.devices[id], now = Date.now();
+  if (d && !d.gone && d.name === (cfg.name || 'Phone') && now - Date.parse(d.lastSeen || 0) < 3600e3) return;
+  data.devices[id] = { ...(d || {}), id, name: cfg.name || 'Phone', lastSeen: nowIso(), gone: false,
+    model: (navigator.userAgentData && navigator.userAgentData.platform) || (/Android/.test(navigator.userAgent) ? 'Android' : /iPhone|iPad/.test(navigator.userAgent) ? 'iPhone' : 'Browser'), updatedAt: nowIso() };
+  saveLocal();
+}
 let syncing = false, syncAgain = false, syncTimer = null;
 function scheduleSync() { clearTimeout(syncTimer); syncTimer = setTimeout(sync, 700); }
 function setSync(state, title) { const d = $('#syncdot'); d.className = 'dot ' + state; d.title = title; }
@@ -635,6 +643,7 @@ async function sync() {
   if (syncing) { syncAgain = true; return; }
   syncing = true; setSync('busy', 'Syncing…');
   try {
+    touchDevice();
     for (let attempt = 0; attempt < 5; attempt++) {
       const { remote, sha } = await ghGet();
       const merged = merge(remote, data);
@@ -713,12 +722,26 @@ function renderSettings() {
        <label class="tick"><input type="checkbox" data-pref="imports" ${d.imports !== false ? 'checked' : ''}> When a Sainsbury's order is added</label>`
     : `<p class="hint" style="margin:0">Get a nudge when food is about to go off.</p><button class="btn" id="remBtn">Turn on reminders</button>`;
   if (!on) $('#remBtn').onclick = enableReminders;
+  const phones = Object.values(data.devices).filter(p => !p.gone).sort((x, y) => (y.lastSeen || y.updatedAt || '') < (x.lastSeen || x.updatedAt || '') ? -1 : 1);
+  const ago = iso => { if (!iso) return 'not yet'; const m = (Date.now() - Date.parse(iso)) / 60000; return m < 60 ? 'just now' : m < 1440 ? `${Math.round(m / 60)}h ago` : m < 2880 ? 'yesterday' : `${Math.round(m / 1440)} days ago`; };
+  $('#phones').innerHTML = phones.length ? phones.map(p => `<div class="phone">
+      <div class="avatar sm" aria-hidden="true">${esc((p.name || '?').charAt(0).toUpperCase())}</div>
+      <div class="t"><b>${esc(p.name || 'Phone')}${p.id === deviceId() ? ' <span class="you">this phone</span>' : ''}</b>
+      <span>${esc(p.model || 'Phone')} · opened ${ago(p.lastSeen || p.updatedAt)} · reminders ${p.sub ? 'on' : 'off'}</span></div>
+      ${p.id === deviceId() ? '' : `<button class="linkbtn muted" data-unlink="${p.id}">Remove</button>`}</div>`).join('')
+    : '<p class="hint" style="margin:0">Only this phone so far.</p>';
   const since = new Date(Date.now() - 30 * 86400000).toISOString(), recent = data.log.filter(l => l.at > since);
   const used = recent.filter(l => l.action === 'used').length, binned = recent.filter(l => l.action === 'binned');
   const pct = used + binned.length ? Math.round(binned.length / (used + binned.length) * 100) : 0;
   $('#stats').innerHTML = `<div class="stat"><span>Used</span><b>${used}</b></div><div class="stat"><span>Binned</span><b>${binned.length} (${pct}%)</b></div>
     ${binned.slice(0, 6).map(l => `<div class="stat"><span>${esc(shortName(l.name))}</span><span>${dayMon(l.at.slice(0, 10))}</span></div>`).join('')}`;
 }
+$('#phones').addEventListener('click', e => {
+  const b = e.target.closest('[data-unlink]'); if (!b) return;
+  const p = data.devices[b.dataset.unlink];
+  if (!confirm(`Remove ${p.name || 'this phone'} from the list? It stops getting reminders. (To lock a lost phone out completely, make a new access key.)`)) return;
+  data.devices[p.id] = { ...p, gone: true, sub: null, updatedAt: nowIso() }; saveLocal(); scheduleSync(); render();
+});
 $('#remState').addEventListener('change', e => { const k = e.target.dataset.pref; if (k) setReminderPref(k, e.target.checked); });
 $('#s-name').addEventListener('change', e => { cfg.name = e.target.value.trim(); saveCfg(); });
 $('#saveCfg').onclick = () => {
