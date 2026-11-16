@@ -1,6 +1,6 @@
 // Larder service worker: offline copy of the app, push reminders, and receiving files shared from other apps.
-const CACHE = 'larder-v1.8.3';
-const SHELL = ['./', 'index.html', 'app.js', 'core.js', 'config.js', 'version.js', 'style.css', 'fonts/fonts.css', 'fonts/inter.woff2', 'fonts/bricolage.woff2', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png', 'icon-180.png', 'vendor/html5-qrcode.min.js'];
+const CACHE = 'larder-v1.8.4';
+const SHELL = ['./', 'index.html', 'app.js', 'core.js', 'config.js', 'version.js', 'style.css', 'fonts/fonts.css', 'fonts/inter.woff2', 'fonts/bricolage.woff2', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png', 'icon-180.png', 'badge-96.png', 'vendor/html5-qrcode.min.js'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE && k !== 'larder-share').map(k => caches.delete(k)))));
@@ -28,7 +28,7 @@ self.addEventListener('push', e => {
   let msg = {};
   try { msg = e.data.json(); } catch { msg = { title: 'Larder', body: e.data && e.data.text() }; }
   e.waitUntil(self.registration.showNotification(msg.title || 'Larder', {
-    body: msg.body || '', icon: 'icon-192.png', badge: 'icon-192.png', tag: msg.tag || 'larder', renotify: true,
+    body: msg.body || '', icon: 'icon-192.png', badge: 'badge-96.png', tag: msg.tag || 'larder', renotify: true,
     data: { url: msg.url || './' },
   }));
 });

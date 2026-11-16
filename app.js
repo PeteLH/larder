@@ -864,7 +864,7 @@ async function enableReminders() {
   const prev = myDevice() || {};
   data.devices[deviceId()] = { id: deviceId(), name: cfg.name || 'Phone', sub: sub.toJSON(), morning: prev.morning ?? true, evening: prev.evening ?? true, imports: prev.imports ?? true, weekly: prev.weekly ?? true, updatedAt: nowIso() };
   saveLocal(); scheduleSync(); render();
-  reg.showNotification('Reminders are on', { body: 'You\'ll get a nudge between 8 and 9am when food needs using up.', icon: 'icon-192.png', badge: 'icon-192.png' });
+  reg.showNotification('Reminders are on', { body: 'You\'ll get a nudge between 8 and 9am when food needs using up.', icon: 'icon-192.png', badge: 'badge-96.png' });
 }
 function setReminderPref(key, val) { const d = myDevice(); if (!d) return; data.devices[d.id] = { ...d, [key]: val, updatedAt: nowIso() }; saveLocal(); scheduleSync(); }
 async function refreshSubscription() {
