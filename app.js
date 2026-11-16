@@ -29,12 +29,6 @@ const CATS = [
   [/bread|loaf|roll|bagel|wrap|tortilla|pitta|naan|crumpet|muffin|croissant|cake|biscuit|\beggs?\b|brioche|baguette/i, '#f6e9cf', '#7a5a12'],
 ];
 function catColours(name) { for (const [re, bg, fg] of CATS) if (re.test(name)) return [bg, fg]; return ['#ebece6', '#4d5149']; }
-function shortName(n) {
-  let s = String(n || '').replace(/^sainsbury'?s\s+/i, '').replace(/^(taste the difference|so organic|by sainsbury'?s)\s+/i, '').replace(/^british\s+/i, '')
-    .replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s+\d+(\.\d+)?\s?(g|kg|ml|l|cl|pints?)\b.*$/i, '').trim();
-  if (s === s.toUpperCase() || /^[A-Z][a-z]*( [A-Z][a-z]*)+/.test(s)) s = s.toLowerCase().replace(/^./, c => c.toUpperCase());
-  return s || n;
-}
 function tileHtml(name, big) {
   const [bg, fg] = catColours(name);
   const mono = (shortName(name).replace(/[^A-Za-z ]/g, '').trim().split(/\s+/)[0] || '?').slice(0, 2).toUpperCase();
@@ -914,7 +908,7 @@ function renderAbout() {
   const rl = $('#ab-reload'); if (rl) rl.onclick = async () => { const reg = await navigator.serviceWorker?.getRegistration(); if (reg) await reg.update(); location.reload(); };
 }
 function renderSettings() {
-  renderAbout();
+  renderAbout(); renderTimer();
   const inst = $('#installCard'); inst.hidden = standalone();
   if (!standalone()) { const h = installHelp(); $('#installHelp').innerHTML = `<p class="hint" style="margin:0 0 4px">${h.p}</p>${h.b}`; $('#w-install') && ($('#w-install').onclick = doInstall); } if (!latestCommit) checkLatest();
   const on = remindersOn(), d = myDevice() || {};
@@ -949,6 +943,46 @@ $('#phones').addEventListener('click', e => {
   if (!confirm(`Remove ${p.name || 'this phone'} from the list? It stops getting reminders. (To lock a lost phone out completely, make a new access key.)`)) return;
   data.devices[p.id] = { ...p, gone: true, sub: null, updatedAt: nowIso() }; saveLocal(); scheduleSync(); render();
 });
+/* Google Apps Script timer: GitHub's own schedule runs hours late, so a tiny script in your Google account
+   starts the job at about 8am and 5pm. The app writes the script with this phone's key already in it. */
+function timerScript() {
+  return `// Larder reminders timer. Starts the Larder job at about 8am and 5pm UK time.
+// To set up: press Run (with "setup" selected), then Allow.
+const TOKEN = '${cfg.token}';
+const REPO = '${cfg.owner}/${cfg.repo}';
+
+function setup() {
+  ScriptApp.getProjectTriggers().forEach(t => ScriptApp.deleteTrigger(t));
+  [8, 17].forEach(h => ScriptApp.newTrigger('runLarder').timeBased().atHour(h).nearMinute(0).everyDays(1).inTimezone('Europe/London').create());
+  runLarder();
+}
+
+function runLarder() {
+  const r = UrlFetchApp.fetch('https://api.github.com/repos/' + REPO + '/actions/workflows/larder.yml/dispatches', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { Authorization: 'Bearer ' + TOKEN, Accept: 'application/vnd.github+json' },
+    payload: JSON.stringify({ ref: '${cfg.branch || 'main'}', inputs: { mode: 'timer' } })
+  });
+  console.log('GitHub said ' + r.getResponseCode());
+}
+`;
+}
+function renderTimer() {
+  $('#timerCard').hidden = !configured();
+  if (!configured()) return;
+  const last = data.meta.lastTimer, ok = last && Date.now() - Date.parse(last) < 36 * 3600e3;
+  const when = last ? new Date(last).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+  $('#timerState').innerHTML = ok
+    ? `<p class="hint" style="margin:0">✅ Working. Last started ${esc(when)}. Reminders arrive at about 8am and 5pm.</p>
+       <button class="linkbtn muted" id="timerRedo">Set it up again</button>`
+    : `<p class="hint" style="margin:0 0 6px">${last ? `⚠️ The timer last ran ${esc(when)}, so it may have stopped. Set it up again:` : 'GitHub often starts the reminder runs hours late. A free timer in your Google account fixes that. One-off, about 2 minutes. Easiest on a computer: open this app there too, or copy on the phone and email it to yourself.'}</p>
+       <ol class="steps"><li>Tap <b>Copy setup script</b>.</li><li>Tap <b>Open Google Apps Script</b> and sign in to Google.</li><li>Select everything in the editor, paste over it, and press <b>Run</b>.</li><li>Google asks for permission and warns the app isn't verified, because it's your own script. Tap <b>Advanced</b> → <b>Go to … (unsafe)</b> → <b>Allow</b>. A tick appears here within a couple of minutes.</li></ol>
+       <button class="btn" id="timerCopy">Copy setup script</button>
+       <a class="btn ghost" href="https://script.google.com/home/projects/create" target="_blank" rel="noopener">Open Google Apps Script</a>
+       <p class="hint" style="margin:8px 0 0">The script contains the access key, so keep it to yourself. It can only start the Larder job.</p>`;
+  const copy = $('#timerCopy'); if (copy) copy.onclick = async () => { try { await navigator.clipboard.writeText(timerScript()); toast('Script copied. Now open Google Apps Script'); } catch { toast('Couldn\'t copy. Try again'); } };
+  const redo = $('#timerRedo'); if (redo) redo.onclick = () => { data.meta.lastTimer = ''; renderTimer(); };
+}
 $('#remState').addEventListener('change', e => { const k = e.target.dataset.pref; if (k) setReminderPref(k, e.target.checked); });
 $('#s-name').addEventListener('change', e => { cfg.name = e.target.value.trim(); saveCfg(); });
 $('#saveCfg').onclick = () => {

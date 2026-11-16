@@ -72,6 +72,34 @@ function guess(name) {
   return { location: 'fridge', dateType: 'bestbefore', days: 7, household: false };
 }
 
+/* ---------- short, friendly product names (shared by the app and notifications) ---------- */
+// "Sainsbury's 640g British Fresh Skinless & Boneless Chicken Breast Fillets" → "Chicken breast fillets"
+const FILLER = /\b(british or irish|british|fresh|skinless|boneless|free range|mixed size|reduced salt|sugar free|no added sugar|plastic free|gluten free|fairtrade|organic|medium sliced|extra thin|lightly seasoned|jumbo|whole|natural|classic|the original|original|seedless|sweet & smoky|honey roast|cooked & peeled|cooked|style|kids|kid'?s|a hearty|hearty|selection|large|asc|minimum)\b|\b\d+%\s*(fat\s*)?/gi;
+const JOINERS = /^(and|&|with|in|or|a|the|of)$/i;
+function shortName(n) {
+  let s = String(n || '').trim();
+  const half = s.split(' '), h = Math.floor(half.length / 2);
+  for (let k = 2; k <= h; k++) if (half.slice(0, k).join(' ').toLowerCase().replace(/\W/g, '') === half.slice(k, 2 * k).join(' ').toLowerCase().replace(/\W/g, '')) { s = half.slice(k).join(' '); break; }  // "Pip & Nut Pip and Nut …"
+  s = s.replace(/^sainsbury'?s\s+/i, '').replace(/^(taste the difference|so organic|by sainsbury'?s|stamford street co\.?|inspired to cook)\s+/i, '');
+  s = s.replace(/,\s*(taste the difference|inspired to cook|seasonal edition).*$/i, '');
+  s = s.replace(/\s*\([^)]*\)\s*/g, ' ');
+  s = s.replace(/^(\d+\s?x\s?)?\d+(\.\d+)?\s?(g|kg|ml|l|cl)\b\s*/i, '').replace(/^\d+\s?x?\s+/i, '');   // leading "640g", "6 x", "10 x"
+  s = s.replace(/\s+with\s.*?(?=\s+stock pots|$)/i, '');                                                 // "Chicken with Bay and Parsley Stock Pots" → "Chicken Stock Pots"
+  s = s.replace(/\brecipe mix\s+(.+?)(\s+\d+(\.\d+)?\s?g\b.*)?$/i, '$1 mix');
+  s = s.replace(/\s+(kid'?s meal|multipack|lunchbox|breakfast cereal|cheese snacks|suspension)\b.*$/i, '');
+  s = s.replace(/\s+(\d+\s?x\s?)?\d+(\.\d+)?\s?(g|kg|ml|l|cl|pints?|yrs?)\b.*$/i, '').replace(/\s+x\s?\d+\b.*$/i, '').replace(/\s+\d+-\d+\s*yrs?.*$/i, '');
+  const lean = s.replace(FILLER, ' ').replace(/\s{2,}/g, ' ').trim();
+  if (lean.split(' ').filter(w => !JOINERS.test(w)).length >= 1 && lean.length >= 3) s = lean;
+  let words = s.split(' ').filter(Boolean);
+  while (words.length && JOINERS.test(words[0])) words.shift();
+  if (words.length > 6) words = words.slice(0, 6);
+  while (words.length > 1 && JOINERS.test(words[words.length - 1])) words.pop();
+  words = words.filter((w, k) => !(JOINERS.test(w) && JOINERS.test(words[k + 1] || '')));
+  // Sentence case, keeping acronyms (BBQ) and things like 50/50.
+  s = words.map((w, k) => /[A-Z].*[A-Z]/.test(w) || /\d/.test(w) ? w : k === 0 ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w.toLowerCase()).join(' ');
+  return s || n;
+}
+
 /* ---------- sync merge ---------- */
 // Merge two copies: newest edit of each item/device wins; deletions are kept as tombstones for 30 days.
 function newest(list) {
@@ -396,6 +424,6 @@ function readPackDate(raw) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { ymd, todayStr, addDays, daysUntil, prettyDate, nowIso, uid, emptyData, guess, merge, makeItem, unitPrice, openedDays, learnKey, learnFrom, linePrice,
+  module.exports = { shortName, ymd, todayStr, addDays, daysUntil, prettyDate, nowIso, uid, emptyData, guess, merge, makeItem, unitPrice, openedDays, learnKey, learnFrom, linePrice,
     htmlToText, emlToText, emlAttachments, anyToText, parseReceipt, parseSainsburysReceipt, isSainsburysReceipt, findDate, readPackDate };
 }
