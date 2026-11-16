@@ -864,7 +864,7 @@ async function enableReminders() {
   const prev = myDevice() || {};
   data.devices[deviceId()] = { id: deviceId(), name: cfg.name || 'Phone', sub: sub.toJSON(), morning: prev.morning ?? true, evening: prev.evening ?? true, imports: prev.imports ?? true, weekly: prev.weekly ?? true, updatedAt: nowIso() };
   saveLocal(); scheduleSync(); render();
-  reg.showNotification('Reminders are on', { body: 'You\'ll get a nudge at 8am when food needs using up.', icon: 'icon-192.png', badge: 'icon-192.png' });
+  reg.showNotification('Reminders are on', { body: 'You\'ll get a nudge between 8 and 9am when food needs using up.', icon: 'icon-192.png', badge: 'icon-192.png' });
 }
 function setReminderPref(key, val) { const d = myDevice(); if (!d) return; data.devices[d.id] = { ...d, [key]: val, updatedAt: nowIso() }; saveLocal(); scheduleSync(); }
 async function refreshSubscription() {
@@ -913,10 +913,10 @@ function renderSettings() {
   if (!standalone()) { const h = installHelp(); $('#installHelp').innerHTML = `<p class="hint" style="margin:0 0 4px">${h.p}</p>${h.b}`; $('#w-install') && ($('#w-install').onclick = doInstall); }
   const on = remindersOn(), d = myDevice() || {};
   $('#remState').innerHTML = on
-    ? `<label class="tick"><input type="checkbox" data-pref="morning" ${d.morning !== false ? 'checked' : ''}> 8am: what to use today and tomorrow</label>
-       <label class="tick"><input type="checkbox" data-pref="evening" ${d.evening !== false ? 'checked' : ''}> 5pm: anything that must be eaten tonight</label>
+    ? `<label class="tick"><input type="checkbox" data-pref="morning" ${d.morning !== false ? 'checked' : ''}> Morning (8–9am): what to use today and tomorrow</label>
+       <label class="tick"><input type="checkbox" data-pref="evening" ${d.evening !== false ? 'checked' : ''}> Evening (5–6pm): anything that must be eaten tonight</label>
        <label class="tick"><input type="checkbox" data-pref="imports" ${d.imports !== false ? 'checked' : ''}> When a Sainsbury's order is added</label>
-       <label class="tick"><input type="checkbox" data-pref="weekly" ${d.weekly !== false ? 'checked' : ''}> Sunday 5pm: the week's waste, and old freezer food</label>`
+       <label class="tick"><input type="checkbox" data-pref="weekly" ${d.weekly !== false ? 'checked' : ''}> Sunday evening: the week's waste, and old freezer food</label>`
     : `<p class="hint" style="margin:0">Get a nudge when food is about to go off.</p><button class="btn" id="remBtn">Turn on reminders</button>`;
   if (!on) $('#remBtn').onclick = enableReminders;
   const phones = Object.values(data.devices).filter(p => !p.gone).sort((x, y) => (y.lastSeen || y.updatedAt || '') < (x.lastSeen || x.updatedAt || '') ? -1 : 1);
@@ -944,9 +944,9 @@ $('#phones').addEventListener('click', e => {
   data.devices[p.id] = { ...p, gone: true, sub: null, updatedAt: nowIso() }; saveLocal(); scheduleSync(); render();
 });
 /* Google Apps Script timer: GitHub's own schedule runs hours late, so a tiny script in your Google account
-   starts the job at about 8am and 5pm. The app writes the script with this phone's key already in it. */
+   starts the job between 8-9am and 5-6pm. The app writes the script with this phone's key already in it. */
 function timerScript() {
-  return `// Larder reminders timer. Starts the Larder job at about 8am and 5pm UK time.
+  return `// Larder reminders timer. Starts the Larder job between 8 and 9am, and 5 and 6pm, UK time.
 // To set up: press Run (with "setup" selected), then Allow.
 const TOKEN = '${cfg.token}';
 const REPO = '${cfg.owner}/${cfg.repo}';
@@ -973,7 +973,7 @@ function renderTimer() {
   const last = data.meta.lastTimer, ok = last && Date.now() - Date.parse(last) < 36 * 3600e3;
   const when = last ? new Date(last).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '';
   $('#timerState').innerHTML = ok
-    ? `<p class="hint" style="margin:0">✅ Working. Last started ${esc(when)}. Reminders arrive at about 8am and 5pm.</p>
+    ? `<p class="hint" style="margin:0">✅ Working. Last started ${esc(when)}. Reminders arrive between 8 and 9am, and 5 and 6pm.</p>
        <button class="linkbtn muted" id="timerRedo">Set it up again</button>`
     : `<p class="hint" style="margin:0 0 6px">${last ? `⚠️ The timer last ran ${esc(when)}, so it may have stopped. Set it up again:` : 'GitHub often starts the reminder runs hours late. A free timer in your Google account fixes that. One-off, about 2 minutes. Easiest on a computer: open this app there too, or copy on the phone and email it to yourself.'}</p>
        <ol class="steps"><li>Tap <b>Copy setup script</b>.</li><li>Tap <b>Open Google Apps Script</b> and sign in to Google.</li><li>Select everything in the editor, paste over it, and press <b>Run</b>.</li><li>Google asks for permission and warns the app isn't verified, because it's your own script. Tap <b>Advanced</b> → <b>Go to … (unsafe)</b> → <b>Allow</b>. A tick appears here within a couple of minutes.</li></ol>
@@ -1045,7 +1045,7 @@ function renderWelcome() {
   const steps = [
     { done: configured(), t: 'Connect', p: 'Open the setup link you were sent.', b: '<button class="btn ghost" id="w-setup">I\'m the first one: enter the key</button>' },
     { done: isInstalled(), t: 'Put it on your home screen', ...installHelp() },
-    { done: remindersOn(), t: 'Turn on reminders', p: 'A nudge at 8am when food needs using up, and when the shopping\'s been added.', b: '<button class="btn" id="w-rem">Turn on reminders</button>' },
+    { done: remindersOn(), t: 'Turn on reminders', p: 'A nudge in the morning when food needs using up, and when the shopping\'s been added.', b: '<button class="btn" id="w-rem">Turn on reminders</button>' },
   ];
   $('#w-steps').innerHTML = steps.map((s, i) => `<div class="step ${s.done ? 'done' : ''}"><div class="n">${s.done ? '✓' : i + 1}</div><div><b>${s.t}</b>${s.done ? '' : `<p>${s.p}</p>${s.b}`}</div></div>`).join('');
   $('#w-setup') && ($('#w-setup').onclick = () => { show('advanced'); setTimeout(() => $('#s-token').focus(), 150); });
