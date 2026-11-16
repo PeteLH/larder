@@ -1081,5 +1081,17 @@ setTimeout(() => requestCheck(false), 3000);
 readShared();
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { render(); sync(); requestCheck(false); } });
 setInterval(() => { if (document.visibilityState === 'visible') sync(); }, 60000);
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').then(refreshSubscription).catch(() => {});
+if ('serviceWorker' in navigator) {
+  // When a new version installs, reload into it straight away (unless something is open mid-edit, then on next open).
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloading = false, pendingReload = false;
+  const reloadNow = () => { if (reloading) return; if ($('#sheet').open || $('#datecam').open) { pendingReload = true; return; } reloading = true; location.reload(); };
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) reloadNow(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if (pendingReload) reloadNow();
+    navigator.serviceWorker.getRegistration().then(r => r && r.update()).catch(() => {});   // look for a new version each time the app comes back
+  });
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => { refreshSubscription(); reg.update().catch(() => {}); }).catch(() => {});
+}
 const startTab = new URLSearchParams(location.search).get('tab'); if (startTab && !needsWelcome()) show(startTab);
