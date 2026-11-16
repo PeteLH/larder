@@ -79,7 +79,7 @@ $$('#nav [data-go]').forEach(b => b.onclick = () => b.dataset.go === 'home' ? (h
 $('#avatar').onclick = () => show('settings');
 
 function render() {
-  const fn = { home: renderHome, place: renderPlace, orders: renderOrders, settings: renderSettings, advanced: renderTimer, welcome: renderWelcome }[screen];
+  const fn = { home: renderHome, place: renderPlace, orders: renderOrders, settings: renderSettings, advanced: renderAdvanced, welcome: renderWelcome }[screen];
   if (fn) fn();
   const pending = pendingChecks().length;
   $('#orders-pip').hidden = !pending;
@@ -890,7 +890,7 @@ async function checkLatest() {
     const v = await (await fetch('version.js?t=' + Date.now(), { cache: 'no-store' })).text();
     latestCommit.number = (v.match(/number:\s*'([^']+)'/) || [])[1];
   } catch { latestCommit = { error: true }; }
-  if (screen === 'settings') renderAbout();
+  if (screen === 'advanced') renderAbout();
 }
 function renderAbout() {
   const V = window.LARDER_VERSION || { number: '?', date: '' };
@@ -907,10 +907,10 @@ function renderAbout() {
   const rl = $('#ab-reload'); if (rl) rl.onclick = async () => { const reg = await navigator.serviceWorker?.getRegistration(); if (reg) await reg.update(); location.reload(); };
 }
 $('#advancedBtn').onclick = () => show('advanced');
+function renderAdvanced() { renderTimer(); renderAbout(); if (!latestCommit) checkLatest(); }
 function renderSettings() {
-  renderAbout();
   const inst = $('#installCard'); inst.hidden = standalone();
-  if (!standalone()) { const h = installHelp(); $('#installHelp').innerHTML = `<p class="hint" style="margin:0 0 4px">${h.p}</p>${h.b}`; $('#w-install') && ($('#w-install').onclick = doInstall); } if (!latestCommit) checkLatest();
+  if (!standalone()) { const h = installHelp(); $('#installHelp').innerHTML = `<p class="hint" style="margin:0 0 4px">${h.p}</p>${h.b}`; $('#w-install') && ($('#w-install').onclick = doInstall); }
   const on = remindersOn(), d = myDevice() || {};
   $('#remState').innerHTML = on
     ? `<label class="tick"><input type="checkbox" data-pref="morning" ${d.morning !== false ? 'checked' : ''}> 8am: what to use today and tomorrow</label>
