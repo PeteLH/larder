@@ -916,9 +916,17 @@ function renderSettings() {
     ? `<label class="tick"><input type="checkbox" data-pref="morning" ${d.morning !== false ? 'checked' : ''}> Morning (8–9am): what to use today and tomorrow</label>
        <label class="tick"><input type="checkbox" data-pref="evening" ${d.evening !== false ? 'checked' : ''}> Evening (5–6pm): anything that must be eaten tonight</label>
        <label class="tick"><input type="checkbox" data-pref="imports" ${d.imports !== false ? 'checked' : ''}> When a Sainsbury's order is added</label>
-       <label class="tick"><input type="checkbox" data-pref="weekly" ${d.weekly !== false ? 'checked' : ''}> Sunday evening: the week's waste, and old freezer food</label>`
+       <label class="tick"><input type="checkbox" data-pref="weekly" ${d.weekly !== false ? 'checked' : ''}> Sunday evening: the week's waste, and old freezer food</label>
+       <button class="linkbtn" id="testNote">Send a test notification to this phone</button>`
     : `<p class="hint" style="margin:0">Get a nudge when food is about to go off.</p><button class="btn" id="remBtn">Turn on reminders</button>`;
   if (!on) $('#remBtn').onclick = enableReminders;
+  else $('#testNote').onclick = async () => {
+    const soon = liveItems().filter(i => i.date && i.dateType === 'useby' && daysUntil(i.date) <= 1).map(i => shortName(i.name));
+    (await navigator.serviceWorker.ready).showNotification('🥫 Test from Larder', {
+      body: soon.length ? `Due soon: ${soon.slice(0, 3).join(', ')}${soon.length > 3 ? ` +${soon.length - 3} more` : ''}` : 'Notifications are working.',
+      icon: 'icon-192.png', badge: 'badge-96.png', tag: 'test' });
+    toast('Sent. Check the top of your screen');
+  };
   const phones = Object.values(data.devices).filter(p => !p.gone).sort((x, y) => (y.lastSeen || y.updatedAt || '') < (x.lastSeen || x.updatedAt || '') ? -1 : 1);
   const ago = iso => { if (!iso) return 'not yet'; const m = (Date.now() - Date.parse(iso)) / 60000; return m < 60 ? 'just now' : m < 1440 ? `${Math.round(m / 60)}h ago` : m < 2880 ? 'yesterday' : `${Math.round(m / 1440)} days ago`; };
   $('#phones').innerHTML = phones.length ? phones.map(p => `<div class="phone">
