@@ -69,17 +69,17 @@ function show(name, opts = {}) {
   document.body.classList.toggle('no-nav', name === 'scan' || name === 'welcome');
   if (name !== 'home' && name !== 'welcome' && !opts.noHistory) history.pushState({ s: name }, '');
   if (name === 'scan') startScan();
-  if (name === 'settings') fillSettings();
+  if (name === 'settings' || name === 'advanced') fillSettings();
   render();
   window.scrollTo(0, 0);
 }
-window.addEventListener('popstate', () => { if ($('#sheet').open) { closeSheet(); return; } if ($('#datecam').open) { unpack ? finishItem({ kind: 'stop' }) : stopDateCam(null); return; } show('home', { noHistory: true }); });
+window.addEventListener('popstate', e => { if ($('#sheet').open) { closeSheet(); return; } if ($('#datecam').open) { unpack ? finishItem({ kind: 'stop' }) : stopDateCam(null); return; } const s = e.state && e.state.s; show(s && $('#s-' + s) ? s : 'home', { noHistory: true }); });
 $$('[data-back]').forEach(b => b.onclick = () => history.state ? history.back() : show('home', { noHistory: true }));
 $$('#nav [data-go]').forEach(b => b.onclick = () => b.dataset.go === 'home' ? (history.state ? history.back() : show('home', { noHistory: true })) : show(b.dataset.go));
 $('#avatar').onclick = () => show('settings');
 
 function render() {
-  const fn = { home: renderHome, place: renderPlace, orders: renderOrders, settings: renderSettings, welcome: renderWelcome }[screen];
+  const fn = { home: renderHome, place: renderPlace, orders: renderOrders, settings: renderSettings, advanced: renderTimer, welcome: renderWelcome }[screen];
   if (fn) fn();
   const pending = pendingChecks().length;
   $('#orders-pip').hidden = !pending;
@@ -878,7 +878,6 @@ async function refreshSubscription() {
 /* ---------- settings ---------- */
 function fillSettings() {
   $('#s-name').value = cfg.name || ''; $('#s-owner').value = cfg.owner || ''; $('#s-repo').value = cfg.repo || ''; $('#s-token').value = cfg.token || '';
-  $('#storage').open = !configured();
 }
 let latestCommit = null;
 async function checkLatest() {
@@ -907,8 +906,9 @@ function renderAbout() {
     (newer ? ' · <button class="linkbtn" id="ab-reload" style="padding:0 0 0 4px;display:inline">update now</button>' : '');
   const rl = $('#ab-reload'); if (rl) rl.onclick = async () => { const reg = await navigator.serviceWorker?.getRegistration(); if (reg) await reg.update(); location.reload(); };
 }
+$('#advancedBtn').onclick = () => show('advanced');
 function renderSettings() {
-  renderAbout(); renderTimer();
+  renderAbout();
   const inst = $('#installCard'); inst.hidden = standalone();
   if (!standalone()) { const h = installHelp(); $('#installHelp').innerHTML = `<p class="hint" style="margin:0 0 4px">${h.p}</p>${h.b}`; $('#w-install') && ($('#w-install').onclick = doInstall); } if (!latestCommit) checkLatest();
   const on = remindersOn(), d = myDevice() || {};
@@ -1048,7 +1048,7 @@ function renderWelcome() {
     { done: remindersOn(), t: 'Turn on reminders', p: 'A nudge at 8am when food needs using up, and when the shopping\'s been added.', b: '<button class="btn" id="w-rem">Turn on reminders</button>' },
   ];
   $('#w-steps').innerHTML = steps.map((s, i) => `<div class="step ${s.done ? 'done' : ''}"><div class="n">${s.done ? '✓' : i + 1}</div><div><b>${s.t}</b>${s.done ? '' : `<p>${s.p}</p>${s.b}`}</div></div>`).join('');
-  $('#w-setup') && ($('#w-setup').onclick = () => { show('settings'); $('#storage').open = true; setTimeout(() => $('#s-token').focus(), 150); });
+  $('#w-setup') && ($('#w-setup').onclick = () => { show('advanced'); setTimeout(() => $('#s-token').focus(), 150); });
   $('#w-install') && ($('#w-install').onclick = doInstall);
   $('#w-rem') && ($('#w-rem').onclick = async () => { if (!configured()) { toast('Connect first'); return; } await enableReminders(); renderWelcome(); });
   $('#w-skip').textContent = steps.every(s => s.done) ? 'Start using Larder' : 'Skip for now';

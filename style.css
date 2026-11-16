@@ -260,3 +260,5 @@ a.btn{text-decoration:none}
 .steps{margin:6px 0 4px;padding-left:20px;font-size:14px;color:var(--muted);line-height:1.5}
 .steps b{color:var(--ink)}
 #timerCard .btn{margin-top:10px}
+
+#advancedBtn{margin-top:4px}

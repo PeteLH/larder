@@ -133,10 +133,7 @@
   <div class="pad">
     <div class="card" id="installCard" hidden><h2 class="h3">Put Larder on your home screen</h2><div id="installHelp"></div></div>
     <div class="card"><h2 class="h3">Reminders on this phone</h2><div id="remState"></div></div>
-    <div class="card" id="timerCard" hidden>
-      <h2 class="h3">Reminders on time</h2>
-      <div id="timerState"></div>
-    </div>
+
     <div class="card"><label class="lbl" for="s-name">Your name</label><input class="field" id="s-name" placeholder="Pete"></div>
     <div class="card">
       <h2 class="h3">Phones on this larder</h2>
@@ -155,7 +152,24 @@
       <div class="stat"><span>App code</span><a id="ab-code" target="_blank" rel="noopener"></a></div>
       <div class="stat"><span>Stock data (private)</span><a id="ab-data" target="_blank" rel="noopener"></a></div>
     </div>
-    <details class="card" id="storage">
+    <button class="place" id="advancedBtn"><div class="tile" style="background:#ebece6;color:#4d5149"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg></div>
+      <div class="t"><b>Advanced</b><span>Shared storage, reminder timer</span></div><svg class="chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button>
+
+  </div>
+</section>
+
+<!-- ADVANCED -->
+<section class="screen" id="s-advanced">
+  <div class="bar">
+    <button class="iconbtn" data-back aria-label="Back"><svg viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></svg></button>
+    <h1 class="hd mid">Advanced</h1>
+  </div>
+  <div class="pad">
+    <div class="card" id="timerCard">
+      <h2 class="h3">Reminders on time</h2>
+      <div id="timerState"></div>
+    </div>
+    <details class="card" id="storage" open>
       <summary class="h3">Shared storage (GitHub)</summary>
       <label class="lbl" for="s-owner">GitHub username</label><input class="field" id="s-owner" autocapitalize="off" autocorrect="off">
       <label class="lbl" for="s-repo">Data repo</label><input class="field" id="s-repo" autocapitalize="off" autocorrect="off">
